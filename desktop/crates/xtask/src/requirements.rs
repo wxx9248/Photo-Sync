@@ -34,6 +34,11 @@ pub enum Status {
 }
 
 impl Registry {
+    /// Reads a registry from text, for comparing one version against another.
+    pub fn read(text: &str) -> Result<Self, String> {
+        toml::from_str(text).map_err(|error| format!("the registry could not be read: {error}"))
+    }
+
     pub fn load(path: &Path) -> Result<Self, String> {
         if !path.is_file() {
             return Ok(Registry {

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::cli::Tier;
 use crate::report::{CheckResult, Failure, Report, Requirements};
-use crate::requirements::Registry;
+use crate::requirements::{Registry, Status};
 use crate::{coverage, mutants, scenario, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
@@ -26,6 +26,8 @@ const PROTECTED: [&str; 4] = [
 const ADDABLE: &str = "verification/scenarios/";
 
 const SPECIFICATION: &str = "docs/SPEC.md";
+
+const REGISTRY: &str = "verification/requirements.toml";
 
 /// One path the range changed, and whether the change created it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -279,6 +281,16 @@ pub fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
         return Ok(true);
     }
 
+    if let [only] = touched.as_slice()
+        && only.path == REGISTRY
+        && let Some(before) = registry_at(root, against, REGISTRY)
+        && let Ok(after) = std::fs::read_to_string(workspace::requirements_file(root))
+        && only_activates(&before, &after)
+    {
+        println!("protected-artifacts: the registry only turned requirements on");
+        return Ok(true);
+    }
+
     println!("protected-artifacts: these define correctness and changed without a spec change");
     for change in touched {
         println!("  {}", change.path);
@@ -315,6 +327,54 @@ fn oracles_touched(changed: &[Change]) -> Vec<&Change> {
             protected && !(change.added && change.path.starts_with(ADDABLE))
         })
         .collect()
+}
+
+/// Whether a registry change only turns requirements on.
+///
+/// Closing a milestone flips requirements from deferred to active, and `docs/ROADMAP.md` says
+/// so. That direction can only make the build stricter: an active requirement without a
+/// passing test fails the tier. The gate exists to stop an oracle being weakened into
+/// agreement with the implementation, and this is the opposite, so it is allowed on its own.
+/// Every other edit to the registry, deferring one included, still wants a specification
+/// change beside it.
+fn only_activates(before: &str, after: &str) -> bool {
+    let (Ok(before), Ok(after)) = (Registry::read(before), Registry::read(after)) else {
+        return false;
+    };
+    if before.requirements.len() != after.requirements.len() {
+        return false;
+    }
+
+    before
+        .requirements
+        .iter()
+        .zip(after.requirements.iter())
+        .all(|(was, now)| {
+            was.id == now.id
+                && was.section == now.section
+                && was.area == now.area
+                && was.quote == now.quote
+                && was.note == now.note
+                && matches!(
+                    (was.status, now.status),
+                    (Status::Deferred, Status::Deferred)
+                        | (Status::Active, Status::Active)
+                        | (Status::Deferred, Status::Active)
+                )
+        })
+}
+
+/// The registry as it stood at a reference, or nothing if it cannot be read there.
+fn registry_at(root: &Path, reference: &str, path: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["show", &format!("{reference}:{path}")])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 #[cfg(test)]
@@ -365,6 +425,58 @@ mod tests {
         let changed = [change("A", "verification/requirements.toml")];
 
         assert_eq!(oracles_touched(&changed).len(), 1);
+    }
+
+    fn registry(entries: &[(&str, &str)]) -> String {
+        entries
+            .iter()
+            .map(|(id, status)| {
+                format!(
+                    "[[requirement]]\nid = \"{id}\"\nsection = \"§1\"\narea = \"XFER\"\n\
+                     status = \"{status}\"\nquote = \"a clause\"\n"
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn turning_a_requirement_on_is_allowed_on_its_own() {
+        let before = registry(&[("R-XFER-001", "deferred"), ("R-XFER-002", "deferred")]);
+        let after = registry(&[("R-XFER-001", "active"), ("R-XFER-002", "deferred")]);
+
+        assert!(only_activates(&before, &after));
+    }
+
+    #[test]
+    fn turning_one_off_again_is_not() {
+        let before = registry(&[("R-XFER-001", "active")]);
+        let after = registry(&[("R-XFER-001", "deferred")]);
+
+        assert!(!only_activates(&before, &after));
+    }
+
+    #[test]
+    fn rewording_a_requirement_is_not() {
+        let before = registry(&[("R-XFER-001", "deferred")]);
+        let after = before.replace("a clause", "a different clause");
+
+        assert!(!only_activates(&before, &after));
+    }
+
+    #[test]
+    fn adding_a_requirement_is_not() {
+        let before = registry(&[("R-XFER-001", "deferred")]);
+        let after = registry(&[("R-XFER-001", "deferred"), ("R-XFER-002", "deferred")]);
+
+        assert!(!only_activates(&before, &after));
+    }
+
+    #[test]
+    fn removing_one_is_not() {
+        let before = registry(&[("R-XFER-001", "deferred"), ("R-XFER-002", "deferred")]);
+        let after = registry(&[("R-XFER-001", "deferred")]);
+
+        assert!(!only_activates(&before, &after));
     }
 
     #[test]
