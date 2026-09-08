@@ -10,5 +10,6 @@
 pub mod clock;
 pub mod desk;
 pub mod identity;
+pub mod pinning;
 pub mod storage;
 pub mod store;

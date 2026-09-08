@@ -625,7 +625,10 @@ dependencies = [
  "refinery",
  "rusqlite",
  "rustix",
+ "serde",
  "thiserror",
+ "toml",
+ "x509-parser",
 ]
 
 [[package]]

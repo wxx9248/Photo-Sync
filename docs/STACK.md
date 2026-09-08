@@ -194,6 +194,11 @@ build time.
   peer's `SubjectPublicKeyInfo` against the pinned value for that device. The verifier has a
   second mode used only while pairing is open (§3.9), where it accepts any client certificate
   and records its SPKI.
+* **`x509-parser` 0.18** reads that one field out of the peer's certificate. Nothing else in
+  the certificate is consulted, since a self-signed certificate vouches for nothing; the key
+  is the whole of what is checked. `rcgen` reports the same field for the desktop's own
+  identity, and a test asserts the two agree, because a disagreement would unpin every phone
+  at once and look like a hardware change rather than a bug.
 * The verified device identity is attached to each connection via tonic's `Connected` trait and
   read from request extensions, so no RPC has to trust a device ID sent in a message body.
 * **Flow control is set explicitly.** HTTP/2's default 65,535-byte window caps throughput at

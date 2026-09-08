@@ -28,6 +28,7 @@ refinery = { version = "0.9.2", default-features = false, features = ["rusqlite"
 rusqlite = { version = "0.39", features = ["bundled"] }
 rustix = { version = "1.1", features = ["fs"] }
 serde = { version = "1.0.229", features = ["derive"] }
+x509-parser = "0.18.1"
 sha2 = "0.10.9"
 serde_json = "1.0.151"
 thiserror = "2.0.20"
