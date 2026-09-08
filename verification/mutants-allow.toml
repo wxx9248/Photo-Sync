@@ -7,11 +7,6 @@
 
 [[allow]]
 file = "desktop/crates/core/src/desktop.rs"
-function = "Desktop::needs_commit_path"
-reason = "The placeholder answer for steps the commit sequence has not reached yet; it disappears with the next change."
-
-[[allow]]
-file = "desktop/crates/core/src/desktop.rs"
 function = "describe"
 reason = "Wording of a log line naming the phase a phone interrupted. Asserting on it would test the sentence, not the decision."
 

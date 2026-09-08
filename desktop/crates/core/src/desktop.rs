@@ -10,6 +10,7 @@
 //! when a phone asks for them rather than reporting a session it did not finish.
 
 mod commit;
+pub(crate) mod deletion;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -123,6 +124,14 @@ enum Pending {
         file: FileId,
     },
 
+    NominationRows {
+        device: DeviceId,
+    },
+    NominationStat {
+        device: DeviceId,
+        row: Box<crate::store::DeviceFileRow>,
+    },
+
     /// One step of the running commit. The commit knows which device it belongs to, so the
     /// step says only where in `SPEC.md` §7.3 the answer lands.
     Commit(Step),
@@ -224,10 +233,9 @@ impl Desktop {
             Event::FinishRequested { device } | Event::ManualCommitRequested { device } => {
                 self.enqueue_commit(&device)
             }
-            Event::DeletionsReported {
-                device,
-                outcomes: _,
-            } => Self::needs_commit_path("the deletion results", &device),
+            Event::DeletionsReported { device, outcomes } => {
+                self.deletions_reported(&device, &outcomes)
+            }
             Event::StorageOpCompleted { op, result } => self.storage_completed(op, result),
             Event::StoreOpCompleted { op, result } => self.store_completed(op, result),
             Event::FreeSpaceMeasured {
@@ -244,14 +252,6 @@ impl Desktop {
             }
             Event::ShutdownRequested => Vec::new(),
         }
-    }
-
-    /// Says plainly that a step is not built rather than reporting a session as finished.
-    /// The deletion protocol of `SPEC.md` §8 is the next change in milestone M1.
-    fn needs_commit_path(step: &str, device: &DeviceId) -> Vec<Effect> {
-        vec![warn(format!(
-            "{step} from {device} needs the deletion protocol, which is not built yet"
-        ))]
     }
 
     fn started(&mut self) -> Vec<Effect> {
@@ -856,6 +856,7 @@ impl Desktop {
         }
         if !retrying && let Some(session) = self.sessions.get_mut(device) {
             session.sends.remove(&file);
+            session.skipped += 1;
         }
 
         let op = self.begin(Pending::DropMismatched {
@@ -935,6 +936,7 @@ impl Desktop {
 
         if let Some(session) = self.sessions.get_mut(device) {
             session.sends.remove(&file);
+            session.sent += 1;
         }
 
         vec![Effect::SendUploadResult {
@@ -949,6 +951,9 @@ impl Desktop {
     fn fail_upload(&mut self, device: &DeviceId, file: FileId, reason: String) -> Vec<Effect> {
         if let Some(upload) = self.upload_mut(device, file) {
             upload.state = UploadState::Closed;
+        }
+        if let Some(session) = self.sessions.get_mut(device) {
+            session.failed += 1;
         }
         vec![
             Effect::Log {
@@ -996,6 +1001,13 @@ impl Desktop {
                 };
                 self.commit_step(step, answer)
             }
+            Pending::NominationStat { device, row } => {
+                let found = match outcome {
+                    StorageOutcome::VaultFile { present, size } => present.then_some(size),
+                    _ => None,
+                };
+                self.vault_copy_checked(&device, &row, found)
+            }
             Pending::ReadNameSources {
                 device,
                 file,
@@ -1019,6 +1031,7 @@ impl Desktop {
             other @ (Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
+            | Pending::NominationRows { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1033,6 +1046,16 @@ impl Desktop {
     fn storage_failed(&mut self, pending: Pending, error: &StorageError) -> Vec<Effect> {
         match pending {
             Pending::Commit(step) => self.commit_step(step, Answer::Failed(error.to_string())),
+            Pending::NominationStat { device, row } => {
+                // A vault copy the desktop could not look at is a photo it will not ask the
+                // phone to delete. Every uncertainty in `SPEC.md` §8 resolves this way.
+                let mut effects = vec![warn(format!(
+                    "the vault copy {} could not be checked: {error}",
+                    row.vault_name
+                ))];
+                effects.extend(self.vault_copy_checked(&device, &row, None));
+                effects
+            }
             Pending::ReadNameSources {
                 device,
                 file,
@@ -1066,6 +1089,7 @@ impl Desktop {
             other @ (Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
+            | Pending::NominationRows { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1094,6 +1118,10 @@ impl Desktop {
     fn store_succeeded(&mut self, pending: Pending, response: StoreResponse) -> Vec<Effect> {
         match pending {
             Pending::Commit(step) => self.commit_step(step, Answer::Store(response)),
+            Pending::NominationRows { device } => match response {
+                StoreResponse::DeviceFiles(rows) => self.nomination_rows(&device, rows),
+                other => vec![mismatched(&other)],
+            },
             Pending::SeedFileIds => match response {
                 StoreResponse::HighestStagingFileId(highest) => self.seed_file_ids(highest),
                 other => vec![mismatched(&other)],
@@ -1135,6 +1163,7 @@ impl Desktop {
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
+            | Pending::NominationStat { .. }
             | Pending::FreeSpace { .. }) => {
                 vec![warn(format!("{other:?} was answered by the store"))]
             }
@@ -1162,10 +1191,12 @@ impl Desktop {
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
+            | Pending::NominationStat { .. }
             | Pending::FreeSpace { .. }
             | Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
+            | Pending::NominationRows { .. }
             | Pending::DropSuperseded { .. }
             | Pending::DropMismatched { .. }) => {
                 vec![error_log(format!("{other:?} failed in the store: {error}"))]
@@ -1181,6 +1212,8 @@ fn describe(phase: &Phase) -> &'static str {
         Phase::Classifying(_) => "being classified",
         Phase::MeasuringSpace => "waiting on the free-space check",
         Phase::Transferring => "transferring",
+        Phase::Nominating => "looking for its vault copies",
+        Phase::Deleting => "deleting on the phone",
         Phase::Rejected => "rejected",
     }
 }

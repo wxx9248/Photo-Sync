@@ -55,6 +55,12 @@ pub(crate) enum Phase {
     /// The phone holds the list and is uploading.
     Transferring,
 
+    /// The commit is done and the vault copies are being looked for.
+    Nominating,
+
+    /// The phone holds the candidate list and is deleting.
+    Deleting,
+
     /// The session was turned away. Nothing further is accepted from it.
     Rejected,
 }
@@ -252,6 +258,13 @@ pub(crate) struct Session {
     pub phase: Phase,
     pub catalog: Catalog,
     pub summary: DiffSummary,
+    /// Files verified, skipped, and failed during this session, for its closing summary.
+    pub sent: u64,
+    pub skipped: u64,
+    pub failed: u64,
+
+    pub nomination: crate::desktop::deletion::Nomination,
+
     pub sends: BTreeMap<FileId, PlannedSend>,
 
     /// The identifiers in `sends`, kept in the order the catalog listed them.
@@ -267,6 +280,10 @@ impl Session {
             phase: Phase::AwaitingCatalog,
             catalog: Catalog::default(),
             summary: DiffSummary::default(),
+            sent: 0,
+            skipped: 0,
+            failed: 0,
+            nomination: crate::desktop::deletion::Nomination::default(),
             sends: BTreeMap::new(),
             order: Vec::new(),
             uploads: BTreeMap::new(),

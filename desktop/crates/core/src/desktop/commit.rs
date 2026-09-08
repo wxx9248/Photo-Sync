@@ -12,6 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::deletion::Nomination;
 use super::{Desktop, Pending, error_log, info, warn};
 use crate::commit::{self, Plan};
 use crate::effect::{Directory, Effect, RejectReason, UiUpdate};
@@ -463,29 +464,33 @@ impl Desktop {
         let device = running.device;
         let summary = running.plan.summary;
 
-        self.sessions.remove(&device);
         for file in running.plan.entries.iter().map(|entry| entry.file) {
             self.durable_digests.remove(&file);
         }
 
-        let mut effects = vec![
-            Effect::NotifyUi {
-                update: UiUpdate::CommitFinished {
-                    device: device.clone(),
-                    summary,
-                },
+        let mut effects = vec![Effect::NotifyUi {
+            update: UiUpdate::CommitFinished {
+                device: device.clone(),
+                summary,
             },
-            // SPEC.md §8 derives the deletion candidates here. Until that is built the phone
-            // is offered none, which is the answer that can only under-delete.
-            warn(format!(
-                "{device} committed but deletion nomination is not built, so nothing is offered"
-            )),
-            Effect::SendCandidates {
-                device,
-                candidates: Vec::new(),
+        }];
+
+        // SPEC.md §6.6: the commit is followed by the candidates it makes possible.
+        let committed = running
+            .plan
+            .device_files
+            .iter()
+            .map(|row| row.path.clone())
+            .collect();
+        effects.extend(self.nominate(
+            &device,
+            Nomination {
+                committed,
                 commit: summary,
+                awaited: 0,
+                candidates: Vec::new(),
             },
-        ];
+        ));
         effects.extend(self.start_next_commit());
         effects
     }

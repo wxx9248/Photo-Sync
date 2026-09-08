@@ -7,8 +7,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use photo_sync_core::covers;
-use photo_sync_core::effect::{DiffSummary, Effect, ToSend, UploadOutcome};
-use photo_sync_core::event::{Event, StorageOutcome};
+use photo_sync_core::effect::{
+    CandidateOrigin, DeletionCandidate, DiffSummary, Effect, SessionSummary, ToSend, UploadOutcome,
+};
+use photo_sync_core::event::{DeletionOutcome, DeletionResult, Event, StorageOutcome};
 use photo_sync_core::id::{DeviceId, DevicePath, FileId, Sha256, Timestamp, VaultName};
 use photo_sync_core::port::StorageError;
 use photo_sync_core::store::{
@@ -38,6 +40,9 @@ struct Desk {
     /// Set to refuse the next rename into the vault, which halts a commit part-way.
     refuse_renames: bool,
 
+    /// Set to refuse to look at a vault copy at all.
+    refuse_stats: bool,
+
     /// Set to answer every staging stat only once nothing else is outstanding. A real shell
     /// answers in whatever order its threads finish, and a commit may not seal its plan
     /// until the last of those answers is in.
@@ -50,9 +55,10 @@ struct Desk {
     /// Staging files that exist on disk.
     staged_files: BTreeSet<FileId>,
 
-    vault: BTreeMap<VaultName, FileId>,
+    /// The vault, as names and the size of what is under them.
+    vault: BTreeMap<VaultName, u64>,
+
     content: BTreeMap<Sha256, VaultName>,
-    device_files: Vec<DeviceFileRow>,
     sealed: Option<Vec<PlanEntry>>,
     done_marks: Vec<FileId>,
 
@@ -70,12 +76,12 @@ impl Desk {
             refuse_manifest: false,
             name_sources: Ok(vec![CAPTURED]),
             refuse_renames: false,
+            refuse_stats: false,
             answer_stats_last: false,
             owner: BTreeMap::new(),
             staged_files: BTreeSet::new(),
             vault: BTreeMap::new(),
             content: BTreeMap::new(),
-            device_files: Vec::new(),
             sealed: None,
             done_marks: Vec::new(),
             log: Vec::new(),
@@ -156,8 +162,9 @@ impl Desk {
                         result: Err(StorageError::NoSpace),
                     });
                 }
+                let size = self.manifest.get(file).map_or(0, |(_, entry)| entry.size);
                 self.staged_files.remove(file);
-                self.vault.insert(name.clone(), *file);
+                self.vault.insert(name.clone(), size);
                 Some(done(*op))
             }
             Effect::RemoveStagingFile { op, file } => {
@@ -178,13 +185,22 @@ impl Desk {
             | Effect::SyncDirectory { op, .. }
             | Effect::TruncateFile { op, .. }
             | Effect::FinalizeStagingFile { op, .. } => Some(done(*op)),
-            Effect::StatVaultFile { op, .. } => Some(Event::StorageOpCompleted {
-                op: *op,
-                result: Ok(StorageOutcome::VaultFile {
-                    present: false,
-                    size: 0,
-                }),
-            }),
+            Effect::StatVaultFile { op, name } => {
+                if self.refuse_stats {
+                    return Some(Event::StorageOpCompleted {
+                        op: *op,
+                        result: Err(StorageError::Failed("unreadable".to_string())),
+                    });
+                }
+                let found = self.vault.get(name).copied();
+                Some(Event::StorageOpCompleted {
+                    op: *op,
+                    result: Ok(StorageOutcome::VaultFile {
+                        present: found.is_some(),
+                        size: found.unwrap_or(0),
+                    }),
+                })
+            }
             Effect::SetTimer { .. }
             | Effect::SendDiff { .. }
             | Effect::SendUploadResult { .. }
@@ -270,7 +286,12 @@ impl Desk {
                 for row in contents {
                     self.content.insert(row.digest, row.vault_name.clone());
                 }
-                self.device_files.extend(device_files.iter().cloned());
+                // Keyed by device and path, so a re-import replaces the row it supersedes.
+                for row in device_files {
+                    self.index
+                        .retain(|held| held.device != row.device || held.path != row.path);
+                    self.index.push(row.clone());
+                }
                 StoreResponse::Done
             }
             StoreRequest::ClearCommitPlan { .. } => {
@@ -1141,9 +1162,9 @@ fn a_staged_photo_is_renamed_into_the_vault_and_recorded() {
         desk.content.get(&digest_of(PHOTO)),
         desk.vault.keys().next()
     );
-    assert_eq!(desk.device_files.len(), 1);
-    assert_eq!(desk.device_files[0].path, photo_path());
-    assert_eq!(desk.device_files[0].committed_at, IMPORTED_AT.at);
+    assert_eq!(desk.index.len(), 1);
+    assert_eq!(desk.index[0].path, photo_path());
+    assert_eq!(desk.index[0].committed_at, IMPORTED_AT.at);
     // Staging is left with nothing: no row, no file, no write-log.
     assert!(desk.manifest.is_empty());
     assert!(!desk.staged_files.contains(&file));
@@ -1210,9 +1231,9 @@ fn content_the_vault_already_holds_is_deleted_from_staging_instead() {
 
     assert!(desk.vault.is_empty());
     assert!(!desk.staged_files.contains(&file));
-    assert_eq!(desk.device_files.len(), 1);
+    assert_eq!(desk.index.len(), 1);
     assert_eq!(
-        desk.device_files[0].vault_name,
+        desk.index[0].vault_name,
         VaultName::new("2020-01-01_000000.jpg")
     );
 }
@@ -1335,7 +1356,7 @@ fn an_entry_whose_file_vanished_is_dropped_from_the_batch() {
     desk.run(Event::FinishRequested { device: phone() });
 
     assert!(desk.vault.is_empty());
-    assert!(desk.device_files.is_empty());
+    assert!(desk.index.is_empty());
     assert!(desk.manifest.is_empty());
 }
 
@@ -1419,8 +1440,8 @@ fn a_second_batch_deduplicates_against_the_first() {
     desk.run(Event::FinishRequested { device: phone() });
 
     assert_eq!(desk.vault.len(), 1);
-    assert_eq!(desk.device_files.len(), 2);
-    assert!(desk.device_files.iter().all(|row| row.vault_name == name));
+    assert_eq!(desk.index.len(), 2);
+    assert!(desk.index.iter().all(|row| row.vault_name == name));
 }
 
 /// Offers a catalog of two photos and takes both of them into staging.
@@ -1501,9 +1522,9 @@ fn a_plan_is_not_sealed_until_the_last_answer_is_in() {
     desk.run(Event::FinishRequested { device: phone() });
 
     assert_eq!(desk.vault.len(), 1);
-    assert_eq!(desk.device_files.len(), 1);
+    assert_eq!(desk.index.len(), 1);
     assert_eq!(
-        desk.device_files[0].path,
+        desk.index[0].path,
         DevicePath::new("DCIM/Camera/IMG_0002.jpg")
     );
 }
@@ -1541,4 +1562,281 @@ fn a_halted_commit_says_so_in_the_interface() {
             }
         )
     }));
+}
+
+// ---- nominating for deletion ---------------------------------------------------------------
+
+fn candidates_of(log: &[Effect]) -> Vec<DeletionCandidate> {
+    for effect in log {
+        if let Effect::SendCandidates { candidates, .. } = effect {
+            return candidates.clone();
+        }
+    }
+    panic!("no candidates were sent");
+}
+
+fn session_summary(log: &[Effect]) -> SessionSummary {
+    for effect in log {
+        if let Effect::SendSessionSummary { summary, .. } = effect {
+            return *summary;
+        }
+    }
+    panic!("no session summary was sent");
+}
+
+/// An index row and a vault copy for a photo imported before this session.
+fn already_imported(desk: &mut Desk, name: &str, size: u64) {
+    let vault_name = VaultName::new(name);
+    desk.vault.insert(vault_name.clone(), size);
+    desk.content.insert(digest_of(PHOTO), vault_name.clone());
+    desk.index.push(DeviceFileRow {
+        device: phone(),
+        path: photo_path(),
+        size,
+        mtime: Timestamp(MTIME),
+        digest: digest_of(PHOTO),
+        vault_name,
+        committed_at: Timestamp(MTIME),
+    });
+}
+
+#[test]
+fn a_photo_this_session_committed_is_offered_for_deletion() {
+    covers!("R-DELETE-001", "R-DELETE-002", "R-DELETE-004");
+    let mut desk = Desk::new();
+
+    stage_and_commit(&mut desk);
+
+    let candidates = candidates_of(&desk.take_log());
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].path, photo_path());
+    assert_eq!(candidates[0].size, PHOTO.len() as u64);
+    assert_eq!(candidates[0].mtime, Timestamp(MTIME));
+    assert_eq!(candidates[0].expected, digest_of(PHOTO));
+    assert_eq!(candidates[0].origin, CandidateOrigin::ThisTransfer);
+}
+
+#[test]
+fn a_photo_imported_earlier_is_offered_as_such() {
+    covers!("R-DELETE-002");
+    let mut desk = Desk::new();
+    already_imported(&mut desk, "2026-08-01_120000.jpg", PHOTO.len() as u64);
+
+    offer_one_photo(&mut desk);
+    desk.take_log();
+    desk.run(Event::FinishRequested { device: phone() });
+
+    let candidates = candidates_of(&desk.take_log());
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].origin, CandidateOrigin::Earlier);
+}
+
+#[test]
+fn a_photo_the_user_curated_out_of_the_vault_is_never_offered() {
+    covers!("R-DELETE-002", "R-DELETE-003");
+    let mut desk = Desk::new();
+    already_imported(&mut desk, "2026-08-01_120000.jpg", PHOTO.len() as u64);
+    // The user deleted the vault copy. The index still covers the photo.
+    desk.vault.clear();
+
+    offer_one_photo(&mut desk);
+    desk.take_log();
+    desk.run(Event::FinishRequested { device: phone() });
+
+    assert!(candidates_of(&desk.take_log()).is_empty());
+}
+
+#[test]
+fn a_vault_copy_of_the_wrong_size_is_not_offered() {
+    covers!("R-DELETE-003");
+    let mut desk = Desk::new();
+    already_imported(&mut desk, "2026-08-01_120000.jpg", PHOTO.len() as u64);
+    desk.vault
+        .insert(VaultName::new("2026-08-01_120000.jpg"), 9);
+
+    offer_one_photo(&mut desk);
+    desk.take_log();
+    desk.run(Event::FinishRequested { device: phone() });
+
+    assert!(candidates_of(&desk.take_log()).is_empty());
+}
+
+#[test]
+fn a_vault_copy_that_cannot_be_looked_at_is_not_offered() {
+    covers!("R-DELETE-010");
+    let mut desk = Desk::new();
+    already_imported(&mut desk, "2026-08-01_120000.jpg", PHOTO.len() as u64);
+    desk.refuse_stats = true;
+
+    offer_one_photo(&mut desk);
+    desk.take_log();
+    desk.run(Event::FinishRequested { device: phone() });
+
+    assert!(candidates_of(&desk.take_log()).is_empty());
+}
+
+#[test]
+fn a_photo_outside_this_session_catalog_is_never_offered() {
+    covers!("R-DELETE-001");
+    let mut desk = Desk::new();
+    let vault_name = VaultName::new("2020-01-01_000000.jpg");
+    desk.vault.insert(vault_name.clone(), 40);
+    desk.index.push(DeviceFileRow {
+        device: phone(),
+        path: DevicePath::new("DCIM/Camera/IMG_LONG_GONE.jpg"),
+        size: 40,
+        mtime: Timestamp(MTIME),
+        digest: digest_of(b"something else"),
+        vault_name,
+        committed_at: Timestamp(MTIME),
+    });
+
+    stage_and_commit(&mut desk);
+
+    let candidates = candidates_of(&desk.take_log());
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].path, photo_path());
+}
+
+#[test]
+fn an_index_row_that_no_longer_matches_the_phone_is_not_offered() {
+    covers!("R-DELETE-002");
+    let mut desk = Desk::new();
+    // The photo was edited on the phone: same path, later mtime than the index holds.
+    already_imported(&mut desk, "2026-08-01_120000.jpg", PHOTO.len() as u64);
+    if let Some(row) = desk.index.last_mut() {
+        row.mtime = Timestamp(MTIME - 900);
+    }
+
+    offer_one_photo(&mut desk);
+    desk.take_log();
+    desk.run(Event::FinishRequested { device: phone() });
+
+    assert!(candidates_of(&desk.take_log()).is_empty());
+}
+
+#[test]
+fn what_the_phone_did_closes_the_session_with_a_summary() {
+    let mut desk = Desk::new();
+    stage_and_commit(&mut desk);
+    desk.take_log();
+
+    desk.run(Event::DeletionsReported {
+        device: phone(),
+        outcomes: vec![DeletionOutcome {
+            path: photo_path(),
+            result: DeletionResult::Deleted,
+        }],
+    });
+
+    let summary = session_summary(&desk.take_log());
+    assert_eq!(summary.sent, 1);
+    assert_eq!(summary.deleted, 1);
+    assert_eq!(summary.kept, 0);
+    assert_eq!(summary.bytes_freed, PHOTO.len() as u64);
+}
+
+#[test]
+fn a_photo_the_phone_kept_is_counted_as_kept() {
+    let mut desk = Desk::new();
+    stage_and_commit(&mut desk);
+    desk.take_log();
+
+    desk.run(Event::DeletionsReported {
+        device: phone(),
+        outcomes: vec![DeletionOutcome {
+            path: photo_path(),
+            result: DeletionResult::KeptChanged,
+        }],
+    });
+
+    let summary = session_summary(&desk.take_log());
+    assert_eq!(summary.kept, 1);
+    assert_eq!(summary.deleted, 0);
+    assert_eq!(summary.bytes_freed, 0);
+}
+
+#[test]
+fn both_photos_of_a_batch_are_offered_together() {
+    covers!("R-DELETE-001");
+    let mut desk = Desk::new();
+    stage_two(&mut desk, b"a second photograph entirely");
+
+    desk.run(Event::FinishRequested { device: phone() });
+
+    let candidates = candidates_of(&desk.take_log());
+    assert_eq!(candidates.len(), 2);
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.origin == CandidateOrigin::ThisTransfer)
+    );
+}
+
+#[test]
+fn a_photo_skipped_for_a_bad_digest_shows_in_the_summary() {
+    let mut desk = Desk::new();
+    let wrong = digest_of(b"a different photograph");
+    offer_one_photo(&mut desk);
+    let (to_send, _) = diff_of(&desk.take_log());
+    let file = to_send[0].file;
+    for _ in 0..2 {
+        open_upload(&mut desk, file, 0);
+        send_bytes(&mut desk, file, 0, PHOTO);
+        close_upload(&mut desk, file, wrong);
+    }
+    desk.run(Event::FinishRequested { device: phone() });
+    desk.take_log();
+
+    desk.run(Event::DeletionsReported {
+        device: phone(),
+        outcomes: Vec::new(),
+    });
+
+    let summary = session_summary(&desk.take_log());
+    assert_eq!(summary.skipped, 1);
+    assert_eq!(summary.sent, 0);
+}
+
+#[test]
+fn a_transfer_the_disk_refused_shows_in_the_summary() {
+    let mut desk = Desk::new();
+    offer_one_photo(&mut desk);
+    let (to_send, _) = diff_of(&desk.take_log());
+    let file = to_send[0].file;
+    open_upload(&mut desk, file, 0);
+    desk.refuse_writes = true;
+    send_bytes(&mut desk, file, 0, PHOTO);
+    desk.refuse_writes = false;
+    desk.run(Event::FinishRequested { device: phone() });
+    desk.take_log();
+
+    desk.run(Event::DeletionsReported {
+        device: phone(),
+        outcomes: Vec::new(),
+    });
+
+    let summary = session_summary(&desk.take_log());
+    assert_eq!(summary.failed, 1);
+    assert_eq!(summary.sent, 0);
+}
+
+#[test]
+fn a_deletion_the_phone_could_not_carry_out_is_counted_as_failed() {
+    let mut desk = Desk::new();
+    stage_and_commit(&mut desk);
+    desk.take_log();
+
+    desk.run(Event::DeletionsReported {
+        device: phone(),
+        outcomes: vec![DeletionOutcome {
+            path: photo_path(),
+            result: DeletionResult::Failed,
+        }],
+    });
+
+    let summary = session_summary(&desk.take_log());
+    assert_eq!(summary.failed, 1);
+    assert_eq!(summary.deleted, 0);
+    assert_eq!(summary.kept, 0);
 }
