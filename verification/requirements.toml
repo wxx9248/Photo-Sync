@@ -1,0 +1,531 @@
+# The machine-readable projection of docs/SPEC.md.
+#
+# Every entry quotes the specification verbatim. `./verify spec-check` compares the quote after
+# collapsing whitespace, so a reworded clause fails the build until someone confirms whether the
+# meaning changed and updates both files together.
+#
+# status = "deferred" means no test is expected yet. A milestone in docs/ROADMAP.md flips the
+# requirements it closes to "active", after which a requirement without a passing test fails the
+# full tier.
+
+[[requirement]]
+id = "R-CATALOG-001"
+section = "§3.2"
+area = "CATALOG"
+status = "deferred"
+quote = "the **`DCIM/Camera` bucket only**, images + videos, enumerated via MediaStore"
+
+[[requirement]]
+id = "R-CATALOG-002"
+section = "§3.2"
+area = "CATALOG"
+status = "deferred"
+quote = "Excluded: `IS_PENDING` items"
+
+[[requirement]]
+id = "R-CATALOG-003"
+section = "§3.2"
+area = "CATALOG"
+status = "deferred"
+quote = "Entry identity: **(relative path, size, mtime)**"
+
+[[requirement]]
+id = "R-CATALOG-004"
+section = "§3.2"
+area = "CATALOG"
+status = "deferred"
+quote = "The catalog is enumerated **once**, at session start, and held frozen in RAM"
+note = "A reconnection re-sends this same catalog, so a re-diff can only shrink the work."
+
+[[requirement]]
+id = "R-CATALOG-005"
+section = "§3.2"
+area = "CATALOG"
+status = "deferred"
+quote = "No upfront hashing"
+
+[[requirement]]
+id = "R-DIFF-001"
+section = "§6.2"
+area = "DIFF"
+status = "deferred"
+quote = "**previously imported** — matches this device's index row on (path, size, mtime)"
+
+[[requirement]]
+id = "R-DIFF-002"
+section = "§6.2"
+area = "DIFF"
+status = "deferred"
+quote = "**already staged** — matches a verified staging-manifest entry on (path, size, mtime)"
+
+[[requirement]]
+id = "R-DIFF-003"
+section = "§6.2"
+area = "DIFF"
+status = "deferred"
+quote = "including a **resume offset** for any file with a partial `.part` in staging"
+
+[[requirement]]
+id = "R-DIFF-004"
+section = "§6.2"
+area = "DIFF"
+status = "deferred"
+quote = "the partial is discarded and the file restarts from zero"
+
+[[requirement]]
+id = "R-DIFF-005"
+section = "§4"
+area = "DIFF"
+status = "deferred"
+quote = "**Free-space check** against the diff's **to-send byte total**"
+
+[[requirement]]
+id = "R-XFER-001"
+section = "§6.4"
+area = "XFER"
+status = "deferred"
+quote = "Each file is streamed with its sha256 (computed on the fly)"
+
+[[requirement]]
+id = "R-XFER-002"
+section = "§6.4"
+area = "XFER"
+status = "deferred"
+quote = "the catalog mtime accompanies the file and is applied to the stored copy"
+
+[[requirement]]
+id = "R-XFER-003"
+section = "§6.4"
+area = "XFER"
+status = "deferred"
+quote = "A file that changed on the phone mid-session (size/mtime mismatch at send time) is skipped and reported"
+
+[[requirement]]
+id = "R-XFER-004"
+section = "§6.5"
+area = "XFER"
+status = "deferred"
+quote = "Hash mismatch → delete the partial, one full re-transfer, then skip + report."
+
+[[requirement]]
+id = "R-STAGE-001"
+section = "§6.5"
+area = "STAGE"
+status = "deferred"
+quote = "Desktop writes each stream into staging under a **manifest-assigned unique name**"
+
+[[requirement]]
+id = "R-STAGE-002"
+section = "§6.5"
+area = "STAGE"
+status = "deferred"
+quote = "the older entry is superseded and its file removed"
+
+[[requirement]]
+id = "R-STAGE-003"
+section = "§6.5"
+area = "STAGE"
+status = "deferred"
+quote = "It fsyncs, verifies the sha256 against the phone's digest, atomically renames to strip the suffix"
+
+[[requirement]]
+id = "R-STAGE-004"
+section = "§6.5"
+area = "STAGE"
+status = "deferred"
+quote = "**All verified files are staged, duplicate content included.**"
+
+[[requirement]]
+id = "R-STAGE-005"
+section = "§7.6"
+area = "STAGE"
+status = "deferred"
+quote = "the staging manifest records an in-progress entry"
+
+[[requirement]]
+id = "R-STAGE-006"
+section = "§7.6"
+area = "STAGE"
+status = "deferred"
+quote = "after each fsync advances the watermark in the manifest (flushed)"
+
+[[requirement]]
+id = "R-STAGE-007"
+section = "§7.6"
+area = "STAGE"
+status = "deferred"
+quote = "every `.part` file is **truncated to its watermark**"
+note = "File size is not a safe offset: a buffered write can extend a file past its durable data."
+
+[[requirement]]
+id = "R-STAGE-008"
+section = "§7.6"
+area = "STAGE"
+status = "deferred"
+quote = "The resume offset reported in the diff (§6.2) is the watermark."
+
+[[requirement]]
+id = "R-STAGE-009"
+section = "§7.6"
+area = "STAGE"
+status = "deferred"
+quote = "the desktop replays the existing prefix through its sha256 state"
+
+[[requirement]]
+id = "R-STAGE-010"
+section = "§7.1"
+area = "STAGE"
+status = "deferred"
+quote = "Staging lives at **`<vault>/.staging/<deviceID>/`** — same filesystem as the vault"
+
+[[requirement]]
+id = "R-NAME-001"
+section = "§7.2"
+area = "NAME"
+status = "deferred"
+quote = "Format: **`yyyy-MM-dd_HHmmss[_n].<ext>`**"
+
+[[requirement]]
+id = "R-NAME-002"
+section = "§7.2"
+area = "NAME"
+status = "deferred"
+quote = "`_n` (n ≥ 1) resolves collisions against existing vault names and within the batch"
+
+[[requirement]]
+id = "R-NAME-003"
+section = "§7.2"
+area = "NAME"
+status = "deferred"
+quote = "Sanity check: a year < 2000 or in the future falls through to the next source."
+
+[[requirement]]
+id = "R-NAME-004"
+section = "§7.2"
+area = "NAME"
+status = "deferred"
+quote = "Terminal fallback: the import time (desktop clock at commit)."
+
+[[requirement]]
+id = "R-COMMIT-001"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "Commits are **serialized across devices**"
+
+[[requirement]]
+id = "R-COMMIT-002"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "the per-device lock is held from finish-signal (commit enqueued) until the commit completes"
+
+[[requirement]]
+id = "R-COMMIT-003"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "each commit inserts its index rows *before* releasing the global commit lock"
+
+[[requirement]]
+id = "R-COMMIT-004"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "look up its recorded sha256 (computed during streaming — no file bytes are re-read"
+
+[[requirement]]
+id = "R-COMMIT-005"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "**duplicate** (hash already in the index, or already assigned earlier in this batch"
+
+[[requirement]]
+id = "R-COMMIT-006"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "A manifest entry whose staging file is missing is dropped with a logged warning."
+
+[[requirement]]
+id = "R-COMMIT-007"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "Write the map to a **write-log** in the staging directory; flush; seal with an end marker."
+
+[[requirement]]
+id = "R-COMMIT-008"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "After each group, fsync the vault and staging directories, **then** append flushed done-marks for the group."
+note = "A done-mark that survives a power loss must imply its rename survived too."
+
+[[requirement]]
+id = "R-COMMIT-009"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "A failed `rename()` (ENOSPC, I/O error) halts the commit after the current entry"
+
+[[requirement]]
+id = "R-COMMIT-010"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "Insert index rows for the batch (durable before proceeding)"
+
+[[requirement]]
+id = "R-COMMIT-011"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "**write-log first**"
+
+[[requirement]]
+id = "R-COMMIT-012"
+section = "§7.3"
+area = "COMMIT"
+status = "deferred"
+quote = "Clearing removes in-progress partials too"
+
+[[requirement]]
+id = "R-RECOVER-001"
+section = "§7.4"
+area = "RECOVER"
+status = "deferred"
+quote = "Absent or unsealed write-log → discard it"
+
+[[requirement]]
+id = "R-RECOVER-002"
+section = "§7.4"
+area = "RECOVER"
+status = "deferred"
+quote = "Sealed write-log → re-execute entries lacking done-marks."
+
+[[requirement]]
+id = "R-RECOVER-003"
+section = "§7.4"
+area = "RECOVER"
+status = "deferred"
+quote = "a file already present at a target path is our own completed rename"
+
+[[requirement]]
+id = "R-RECOVER-004"
+section = "§7.4"
+area = "RECOVER"
+status = "deferred"
+quote = "Replay index insertion (idempotent upsert"
+
+[[requirement]]
+id = "R-RECOVER-005"
+section = "§7.4"
+area = "RECOVER"
+status = "deferred"
+quote = "Recovery assumes the vault has a **single writer**"
+
+[[requirement]]
+id = "R-INDEX-001"
+section = "§7.5"
+area = "INDEX"
+status = "deferred"
+quote = "**content** table keyed by sha256"
+
+[[requirement]]
+id = "R-INDEX-002"
+section = "§7.5"
+area = "INDEX"
+status = "deferred"
+quote = "keyed by **(device_id, device_path)** — re-importing a changed file **replaces** the row"
+
+[[requirement]]
+id = "R-INDEX-003"
+section = "§7.5"
+area = "INDEX"
+status = "deferred"
+quote = "once imported, a photo is never re-imported"
+
+[[requirement]]
+id = "R-INDEX-004"
+section = "§7.5"
+area = "INDEX"
+status = "deferred"
+quote = "a **force re-import** action"
+
+[[requirement]]
+id = "R-DELETE-001"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "the desktop derives deletion candidates **only from the current session's catalog**"
+
+[[requirement]]
+id = "R-DELETE-002"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "every catalog entry covered by the index **whose vault copy is verified present**"
+note = "The vault, not the index, is the source of truth for safely stored."
+
+[[requirement]]
+id = "R-DELETE-003"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "a `stat()` of the recorded vault name checking existence and size, at nomination time"
+
+[[requirement]]
+id = "R-DELETE-004"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "Each candidate: `(device_path, expected_sha256, size, mtime)`."
+
+[[requirement]]
+id = "R-DELETE-005"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "The phone shows **one prompt**"
+
+[[requirement]]
+id = "R-DELETE-006"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "candidate **committed this session** → verify size + mtime unchanged"
+
+[[requirement]]
+id = "R-DELETE-007"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "**previously-imported** candidate → full local re-hash vs `expected_sha256`"
+
+[[requirement]]
+id = "R-DELETE-008"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "any mismatch → **keep the file**, report"
+
+[[requirement]]
+id = "R-DELETE-009"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "Deletion uses `MediaStore.createDeleteRequest`: **silent** when `MANAGE_MEDIA` is granted"
+
+[[requirement]]
+id = "R-DELETE-010"
+section = "§8"
+area = "DELETE"
+status = "deferred"
+quote = "can only cause *under-deletion* — never a wrong deletion"
+
+[[requirement]]
+id = "R-SESSION-001"
+section = "§3.4"
+area = "SESSION"
+status = "deferred"
+quote = "**Tap 1 — Start**"
+
+[[requirement]]
+id = "R-SESSION-002"
+section = "§3.4"
+area = "SESSION"
+status = "deferred"
+quote = "the phone auto-sends the finish signal with no tap"
+
+[[requirement]]
+id = "R-SESSION-003"
+section = "§3.5"
+area = "SESSION"
+status = "deferred"
+quote = "The phone persists nothing about transfer progress (only the pairing credential)"
+
+[[requirement]]
+id = "R-SESSION-004"
+section = "§6"
+area = "SESSION"
+status = "deferred"
+quote = "A connection drop mid-session is rejoined by re-running the handshake and re-sending the *frozen* catalog"
+
+[[requirement]]
+id = "R-SESSION-005"
+section = "§6"
+area = "SESSION"
+status = "deferred"
+quote = "There is no session token"
+
+[[requirement]]
+id = "R-SESSION-006"
+section = "§6"
+area = "SESSION"
+status = "deferred"
+quote = "the phone never resumes from its own send counter"
+
+[[requirement]]
+id = "R-SESSION-007"
+section = "§4"
+area = "SESSION"
+status = "deferred"
+quote = "A second live connection claiming an already-connected device ID supersedes the first."
+
+[[requirement]]
+id = "R-PAIR-001"
+section = "§5.2"
+area = "PAIR"
+status = "deferred"
+quote = "First connection displays a short code on the desktop screen"
+
+[[requirement]]
+id = "R-PAIR-002"
+section = "§5.2"
+area = "PAIR"
+status = "deferred"
+quote = "The phone stores exactly **one** paired desktop."
+
+[[requirement]]
+id = "R-PAIR-003"
+section = "§5.2"
+area = "PAIR"
+status = "deferred"
+quote = "A changed desktop key (e.g. reinstall) triggers a visible re-pair flow — never silent trust."
+
+[[requirement]]
+id = "R-PAIR-004"
+section = "§5.2"
+area = "PAIR"
+status = "deferred"
+quote = "Handshake payload: protocol version, device ID, device name."
+
+[[requirement]]
+id = "R-DISCOVER-001"
+section = "§5.1"
+area = "DISCOVER"
+status = "deferred"
+quote = "mDNS/DNS-SD, service type `_photosync._tcp`."
+
+[[requirement]]
+id = "R-UI-001"
+section = "§4"
+area = "UI"
+status = "deferred"
+quote = "staged sessions with a manual **\"Commit now\"** action"
+
+[[requirement]]
+id = "R-UI-002"
+section = "§4"
+area = "UI"
+status = "deferred"
+quote = "**Inhibits system suspend** while any session is active."
+
+[[requirement]]
+id = "R-UI-003"
+section = "§4"
+area = "UI"
+status = "deferred"
+quote = "changing it moves nothing"
