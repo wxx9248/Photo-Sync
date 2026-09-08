@@ -314,3 +314,109 @@ fn a_verified_leftover_is_left_alone_when_the_machine_returns() {
         "a file whose digest already matched was cut back anyway"
     );
 }
+
+// ---- a commit interrupted part-way ---------------------------------------------------------
+
+fn is_rename(effect: &photo_sync_core::Effect) -> bool {
+    matches!(effect, photo_sync_core::Effect::RenameIntoVault { .. })
+}
+
+fn is_done_mark(effect: &photo_sync_core::Effect) -> bool {
+    matches!(
+        effect,
+        photo_sync_core::Effect::Store {
+            request: photo_sync_core::store::StoreRequest::MarkPlanEntriesDone { .. },
+            ..
+        }
+    )
+}
+
+/// Runs a session up to the finish signal, then stops the machine just before `stop`.
+fn commit_until(sim: &mut Simulation, stop: fn(&photo_sync_core::Effect) -> bool) {
+    let file = offer(sim);
+    send_all(sim, file);
+    sim.deliver_until(Event::FinishRequested { device: phone() }, stop);
+}
+
+#[test]
+fn a_commit_that_never_moved_a_file_is_finished_afterwards() {
+    covers!("R-RECOVER-002");
+    let mut sim = desktop();
+    commit_until(&mut sim, is_rename);
+
+    // The plan was sealed and nothing had happened yet.
+    assert!(sim.storage.vault().is_empty());
+    sim.restart();
+
+    assert_eq!(sim.storage.vault().len(), 1);
+    assert_eq!(sim.store.device_files().len(), 1);
+    assert!(sim.store.manifest().is_empty());
+    assert!(sim.store.sealed_plan(&phone()).is_none());
+}
+
+#[test]
+fn a_commit_that_moved_the_file_but_never_said_so_is_not_undone() {
+    covers!("R-RECOVER-003");
+    let mut sim = desktop();
+    commit_until(&mut sim, is_done_mark);
+
+    // The rename happened and both directories were synced, so the photograph is in the
+    // vault; nothing had written down that it was.
+    let before: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
+    assert_eq!(before.len(), 1);
+    sim.restart();
+
+    // The sealed map reserved that name, so the file already sitting there is this desktop's
+    // own completed rename rather than a reason to write a second copy.
+    let after: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
+    assert_eq!(after, before);
+    assert_eq!(sim.store.device_files().len(), 1);
+    assert!(sim.store.manifest().is_empty());
+}
+
+#[test]
+fn a_replayed_commit_records_the_photo_it_committed() {
+    covers!("R-RECOVER-004");
+    let mut sim = desktop();
+    commit_until(&mut sim, is_rename);
+    sim.restart();
+
+    let rows = sim.store.device_files();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].path, photo_path());
+    assert_eq!(rows[0].digest, digest_of(PHOTO));
+    assert_eq!(sim.store.content().len(), 1);
+}
+
+#[test]
+fn a_desktop_with_no_write_log_replays_nothing() {
+    covers!("R-RECOVER-001");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+
+    // Verified, staged, and no commit was ever asked for.
+    sim.restart();
+
+    assert!(sim.storage.vault().is_empty());
+    assert!(sim.store.device_files().is_empty());
+    // The staged file is still there, and the next commit will take it.
+    assert_eq!(sim.store.manifest().len(), 1);
+}
+
+#[test]
+fn a_replayed_commit_still_lets_the_phone_finish_next_time() {
+    let mut sim = desktop();
+    commit_until(&mut sim, is_rename);
+    sim.restart();
+
+    // The device was locked while its commit was in flight; once replayed it is free.
+    let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0002.jpg",
+        PhoneFile::new(MTIME, b"a second photograph".to_vec()),
+    );
+    let outcome = phone.run_session(&mut sim);
+
+    assert_eq!(sim.storage.vault().len(), 2);
+    assert_eq!(outcome.uploaded.len(), 1);
+}

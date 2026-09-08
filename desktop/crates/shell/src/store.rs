@@ -300,7 +300,7 @@ impl Store {
     fn load_plan(&mut self, device: &DeviceId) -> Result<StoreResponse, StoreError> {
         let manifest = self.manifest(device)?;
         let mut statement = manifest
-            .prepare("SELECT file, action, vault_name FROM commit_plan ORDER BY ordinal")
+            .prepare("SELECT file, action, vault_name, done FROM commit_plan ORDER BY ordinal")
             .map_err(|error| failed(&error))?;
         let entries = statement
             .query_map([], read_plan_entry)
@@ -503,6 +503,7 @@ fn read_plan_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanEntry> {
         } else {
             PlanAction::Duplicate { name }
         },
+        done: row.get::<_, i64>(3)? != 0,
     })
 }
 

@@ -61,6 +61,14 @@ pub struct Desktop {
     queued: BTreeSet<DeviceId>,
     order: VecDeque<DeviceId>,
 
+    /// What each device left in staging when the machine came back, kept until its
+    /// write-log has been read and any replay has what it needs.
+    recovered: BTreeMap<DeviceId, Vec<StagingEntry>>,
+
+    /// Sealed write-logs waiting to be finished. `SPEC.md` §7.3 serializes commits, and a
+    /// replay is a commit, so these wait their turn like any other.
+    to_replay: VecDeque<(DeviceId, Vec<crate::store::PlanEntry>)>,
+
     /// Devices whose commit stopped part-way. Their sealed write-log is waiting to be
     /// replayed, so nothing else may touch their staging.
     halted: BTreeSet<DeviceId>,
@@ -77,6 +85,9 @@ enum Pending {
     /// Startup recovery: which devices left anything in staging, and what each left.
     RecoverDevices,
     RecoverStaging {
+        device: DeviceId,
+    },
+    RecoverPlan {
         device: DeviceId,
     },
     TruncatePartial {
@@ -199,6 +210,8 @@ impl Desktop {
             pending: BTreeMap::new(),
             files: None,
             awaiting_ids: BTreeSet::new(),
+            recovered: BTreeMap::new(),
+            to_replay: VecDeque::new(),
             running: None,
             queued: BTreeSet::new(),
             order: VecDeque::new(),
@@ -1112,6 +1125,7 @@ impl Desktop {
             | Pending::NominationRows { .. }
             | Pending::RecoverDevices
             | Pending::RecoverStaging { .. }
+            | Pending::RecoverPlan { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1180,6 +1194,7 @@ impl Desktop {
             | Pending::NominationRows { .. }
             | Pending::RecoverDevices
             | Pending::RecoverStaging { .. }
+            | Pending::RecoverPlan { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1227,8 +1242,22 @@ impl Desktop {
                         entries.len()
                     ))];
                     effects.extend(self.recover_staging(&entries));
+                    self.recovered.insert(device.clone(), entries);
+
+                    // Whether a commit was in flight is the write-log's answer to give.
+                    let op = self.begin(Pending::RecoverPlan {
+                        device: device.clone(),
+                    });
+                    effects.push(Effect::Store {
+                        op,
+                        request: StoreRequest::LoadCommitPlan { device },
+                    });
                     effects
                 }
+                other => vec![mismatched(&other)],
+            },
+            Pending::RecoverPlan { device } => match response {
+                StoreResponse::CommitPlan(plan) => self.plan_recovered(&device, plan),
                 other => vec![mismatched(&other)],
             },
             Pending::ListStaging { device } => match response {
@@ -1306,6 +1335,7 @@ impl Desktop {
             | Pending::NominationRows { .. }
             | Pending::RecoverDevices
             | Pending::RecoverStaging { .. }
+            | Pending::RecoverPlan { .. }
             | Pending::DropSuperseded { .. }
             | Pending::DropMismatched { .. }) => {
                 vec![error_log(format!("{other:?} failed in the store: {error}"))]

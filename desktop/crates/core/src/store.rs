@@ -155,6 +155,11 @@ impl StagingEntry {
 pub struct PlanEntry {
     pub file: FileId,
     pub action: PlanAction,
+
+    /// Whether this entry has been carried out. Written only after the directory syncs for
+    /// its group returned, and read by recovery to know what is left to do. Sealing a plan
+    /// ignores it: nothing in a plan is done at the moment it is written.
+    pub done: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

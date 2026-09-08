@@ -255,12 +255,14 @@ fn a_sealed_plan_comes_back_in_the_order_it_was_written() {
             action: PlanAction::Import {
                 name: VaultName::new("2026-08-01_123456.jpg"),
             },
+            done: false,
         },
         PlanEntry {
             file: FileId(1),
             action: PlanAction::Duplicate {
                 name: VaultName::new("2020-01-01_000000.jpg"),
             },
+            done: false,
         },
     ];
 
@@ -314,6 +316,7 @@ fn clearing_the_plan_leaves_the_manifest_alone() {
                 action: PlanAction::Import {
                     name: VaultName::new("2026-08-01_123456.jpg"),
                 },
+                done: false,
             }],
         },
     );

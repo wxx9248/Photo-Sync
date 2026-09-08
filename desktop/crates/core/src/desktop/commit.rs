@@ -18,7 +18,7 @@ use crate::commit::{self, Plan};
 use crate::effect::{Directory, Effect, RejectReason, UiUpdate};
 use crate::id::{DeviceId, FileId, Sha256, VaultName};
 use crate::naming::{self, Moment};
-use crate::store::{ContentRow, PlanAction, StagingEntry, StoreRequest, StoreResponse};
+use crate::store::{ContentRow, PlanAction, PlanEntry, StagingEntry, StoreRequest, StoreResponse};
 
 /// How many entries are executed before the directories are synced and the group is marked
 /// done. Smaller groups mean less to replay after a crash and more directory syncs.
@@ -56,6 +56,10 @@ pub(super) struct Running {
     /// and every answer afterwards only counts down.
     asked: bool,
 
+    /// The sealed plan being finished, when this commit is a replay rather than a new one.
+    /// A replay asks nothing of the index: its names were reserved when it was sealed.
+    replaying: Option<Vec<PlanEntry>>,
+
     stats_awaited: usize,
     known_content: Option<BTreeMap<Sha256, VaultName>>,
     taken: Option<BTreeSet<VaultName>>,
@@ -77,6 +81,7 @@ impl Running {
             entries: None,
             missing: BTreeSet::new(),
             asked: false,
+            replaying: None,
             stats_awaited: 0,
             known_content: None,
             taken: None,
@@ -120,9 +125,53 @@ impl Desktop {
         self.start_next_commit()
     }
 
+    /// Takes what a device's write-log said, if it had one.
+    ///
+    /// `SPEC.md` §7.4: no log means staging was not mid-commit, and any stale manifest rows
+    /// resolve at the next commit. A log means a commit was interrupted, and finishing it is
+    /// what makes the whole procedure idempotent at any power-off point.
+    pub(super) fn plan_recovered(
+        &mut self,
+        device: &DeviceId,
+        plan: Option<Vec<PlanEntry>>,
+    ) -> Vec<Effect> {
+        let Some(plan) = plan else {
+            self.recovered.remove(device);
+            return Vec::new();
+        };
+
+        let mut effects = vec![info(format!(
+            "{device} was part-way through a commit of {} entries, finishing it",
+            plan.len()
+        ))];
+        self.to_replay.push_back((device.clone(), plan));
+        effects.extend(self.start_next_commit());
+        effects
+    }
+
+    /// Finishes a sealed plan, as though the commit had never been interrupted.
+    fn start_replay(&mut self, device: DeviceId, sealed: Vec<PlanEntry>) -> Vec<Effect> {
+        let entries = self.recovered.remove(&device).unwrap_or_default();
+        let mut running = Running::new(device.clone());
+        running.replaying = Some(sealed);
+        running.entries = Some(entries);
+        self.running = Some(running);
+
+        let clock = self.begin(Pending::Commit(Step::ReadClock));
+        vec![
+            Effect::NotifyUi {
+                update: UiUpdate::CommitStarted { device },
+            },
+            Effect::ReadClock { op: clock },
+        ]
+    }
+
     fn start_next_commit(&mut self) -> Vec<Effect> {
         if self.running.is_some() {
             return Vec::new();
+        }
+        if let Some((device, sealed)) = self.to_replay.pop_front() {
+            return self.start_replay(device, sealed);
         }
         let Some(device) = self.order.pop_front() else {
             return Vec::new();
@@ -217,12 +266,28 @@ impl Desktop {
 
         // The questions are asked once, as soon as the clock and the manifest are in hand.
         if !running.asked {
+            running.asked = true;
+
+            // A replay looks for the files its sealed plan names, and asks the index nothing:
+            // every name it will use was reserved before the crash.
+            if let Some(sealed) = running.replaying.clone() {
+                let known: BTreeSet<FileId> = sealed.iter().map(|entry| entry.file).collect();
+                let batch: Vec<StagingEntry> = entries
+                    .iter()
+                    .filter(|entry| known.contains(&entry.file))
+                    .cloned()
+                    .collect();
+                running.stats_awaited = batch.len();
+                running.known_content = Some(BTreeMap::new());
+                running.taken = Some(BTreeSet::new());
+                return self.stat_each(&batch);
+            }
+
             let batch: Vec<StagingEntry> = entries
                 .iter()
                 .filter(|entry| entry.is_verified())
                 .cloned()
                 .collect();
-            running.asked = true;
             running.stats_awaited = batch.len();
             return self.ask_about(&batch, moment);
         }
@@ -233,6 +298,20 @@ impl Desktop {
         self.seal()
     }
 
+    /// Looks for each staged file the batch names.
+    fn stat_each(&mut self, batch: &[StagingEntry]) -> Vec<Effect> {
+        batch
+            .iter()
+            .map(|entry| {
+                let op = self.begin(Pending::Commit(Step::StatStaged { file: entry.file }));
+                Effect::StatStagingFile {
+                    op,
+                    file: entry.file,
+                }
+            })
+            .collect()
+    }
+
     fn ask_about(&mut self, batch: &[StagingEntry], moment: Moment) -> Vec<Effect> {
         let digests: Vec<Sha256> = batch.iter().filter_map(|entry| entry.digest).collect();
         let stems: BTreeSet<String> = batch
@@ -240,14 +319,7 @@ impl Desktop {
             .map(|entry| naming::stem(&entry.name_sources, moment.local))
             .collect();
 
-        let mut effects = Vec::new();
-        for entry in batch {
-            let op = self.begin(Pending::Commit(Step::StatStaged { file: entry.file }));
-            effects.push(Effect::StatStagingFile {
-                op,
-                file: entry.file,
-            });
-        }
+        let mut effects = self.stat_each(batch);
 
         let content = self.begin(Pending::Commit(Step::LookupContent));
         effects.push(Effect::Store {
@@ -280,6 +352,25 @@ impl Desktop {
         ) else {
             return Vec::new();
         };
+
+        // A replay is already sealed. Writing the map again would clear the done-marks with
+        // it and re-do work that has already happened.
+        if let Some(sealed) = running.replaying.clone() {
+            running.plan = commit::replay(
+                &running.device,
+                &sealed,
+                entries,
+                &running.missing,
+                moment.at,
+            );
+            let dropped = running.plan.dropped.clone();
+            let mut effects: Vec<Effect> = dropped
+                .iter()
+                .map(|file| warn(format!("{file:?} has no manifest row left to replay")))
+                .collect();
+            effects.extend(self.execute_group());
+            return effects;
+        }
 
         running.plan = commit::plan(&commit::Inputs {
             device: &running.device,

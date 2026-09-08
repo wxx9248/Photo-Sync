@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::effect::CommitSummary;
-use crate::id::{DeviceId, Sha256, VaultName};
+use crate::id::{DeviceId, Sha256, Timestamp, VaultName};
 use crate::naming::{self, Moment};
 use crate::store::{ContentRow, DeviceFileRow, PlanAction, PlanEntry, StagingEntry};
 
@@ -111,9 +111,72 @@ pub fn plan(inputs: &Inputs<'_>) -> Plan {
         plan.entries.push(PlanEntry {
             file: entry.file,
             action,
+            done: false,
         });
     }
 
+    plan
+}
+
+/// Rebuilds what a sealed plan was going to do, for a commit interrupted part-way.
+///
+/// `SPEC.md` §7.4 replays the entries without a done-mark and nothing else. The names are the
+/// ones the sealed map reserved, never fresh ones: a file already sitting at a target path is
+/// this desktop's own completed rename, and giving it a second name would put the same
+/// photograph in the vault twice.
+///
+/// The rows are rebuilt from every entry, done or not, because the clear order of step 3
+/// removes the write-log first. A log that survived means the index rows had not gone in.
+#[must_use]
+pub fn replay(
+    device: &DeviceId,
+    sealed: &[PlanEntry],
+    entries: &[StagingEntry],
+    missing: &BTreeSet<crate::id::FileId>,
+    committed_at: Timestamp,
+) -> Plan {
+    let known: BTreeMap<crate::id::FileId, &StagingEntry> =
+        entries.iter().map(|entry| (entry.file, entry)).collect();
+
+    let mut plan = Plan::default();
+    for sealed_entry in sealed {
+        let Some(entry) = known.get(&sealed_entry.file) else {
+            // The manifest row is gone, so step 3 got as far as clearing it, and with it the
+            // only description of the row this entry would have written.
+            plan.dropped.push(sealed_entry.file);
+            continue;
+        };
+        let Some(digest) = entry.digest else {
+            continue;
+        };
+        let name = name_of(&sealed_entry.action).clone();
+
+        if matches!(sealed_entry.action, PlanAction::Import { .. }) {
+            plan.contents.push(ContentRow {
+                digest,
+                vault_name: name.clone(),
+            });
+            plan.summary.imported += 1;
+            plan.summary.bytes_committed += entry.size;
+        } else {
+            plan.summary.duplicates += 1;
+        }
+
+        plan.device_files.push(DeviceFileRow {
+            device: device.clone(),
+            path: entry.path.clone(),
+            size: entry.size,
+            mtime: entry.mtime,
+            digest,
+            vault_name: name,
+            committed_at,
+        });
+
+        // A file that is gone was already moved, which is what its target holding it means.
+        if !sealed_entry.done && !missing.contains(&sealed_entry.file) {
+            plan.entries.push(sealed_entry.clone());
+        }
+    }
     plan
 }
 
@@ -421,6 +484,132 @@ mod tests {
         let plan = plan_of(&[]);
 
         assert_eq!(plan, Plan::default());
+    }
+
+    // ---- finishing a commit that was interrupted ------------------------------------
+
+    fn sealed(file: u64, name: &str, done: bool) -> PlanEntry {
+        PlanEntry {
+            file: FileId(file),
+            action: PlanAction::Import {
+                name: VaultName::new(name),
+            },
+            done,
+        }
+    }
+
+    fn replay_of(sealed: &[PlanEntry], entries: &[StagingEntry]) -> Plan {
+        replay(
+            &device(),
+            sealed,
+            entries,
+            &BTreeSet::new(),
+            imported_at().at,
+        )
+    }
+
+    #[test]
+    fn a_plan_with_nothing_done_replays_all_of_it() {
+        covers!("R-RECOVER-002");
+        let batch = [
+            verified(1, "one.jpg", 0xaa, captured_at(1, 0)),
+            verified(2, "two.jpg", 0xbb, captured_at(2, 0)),
+        ];
+        let plan = [
+            sealed(1, "2026-08-01_120000.jpg", false),
+            sealed(2, "2026-08-02_120000.jpg", false),
+        ];
+
+        let replayed = replay_of(&plan, &batch);
+
+        assert_eq!(replayed.entries.len(), 2);
+        assert_eq!(replayed.device_files.len(), 2);
+    }
+
+    #[test]
+    fn an_entry_already_done_is_not_done_again() {
+        covers!("R-RECOVER-002");
+        let batch = [
+            verified(1, "one.jpg", 0xaa, captured_at(1, 0)),
+            verified(2, "two.jpg", 0xbb, captured_at(2, 0)),
+        ];
+        let plan = [
+            sealed(1, "2026-08-01_120000.jpg", true),
+            sealed(2, "2026-08-02_120000.jpg", false),
+        ];
+
+        let replayed = replay_of(&plan, &batch);
+
+        assert_eq!(replayed.entries.len(), 1);
+        assert_eq!(replayed.entries[0].file, FileId(2));
+        // Its row still goes in: the write-log outliving the crash means nothing was written.
+        assert_eq!(replayed.device_files.len(), 2);
+    }
+
+    #[test]
+    fn an_entry_whose_file_already_moved_is_not_moved_again() {
+        covers!("R-RECOVER-003");
+        let batch = [verified(1, "one.jpg", 0xaa, captured_at(1, 0))];
+        let plan = [sealed(1, "2026-08-01_120000.jpg", false)];
+        let missing = BTreeSet::from([FileId(1)]);
+
+        let replayed = replay(&device(), &plan, &batch, &missing, imported_at().at);
+
+        // A file at a name the sealed map reserved is this desktop's own completed rename.
+        assert!(replayed.entries.is_empty());
+        assert_eq!(replayed.device_files.len(), 1);
+    }
+
+    #[test]
+    fn an_entry_with_no_manifest_row_left_is_dropped() {
+        covers!("R-RECOVER-001");
+        let plan = [sealed(1, "2026-08-01_120000.jpg", false)];
+
+        let replayed = replay_of(&plan, &[]);
+
+        assert_eq!(replayed.dropped, vec![FileId(1)]);
+        assert!(replayed.entries.is_empty());
+        assert!(replayed.device_files.is_empty());
+    }
+
+    #[test]
+    fn a_replay_uses_the_names_the_sealed_map_reserved() {
+        covers!("R-RECOVER-003");
+        let batch = [verified(1, "one.jpg", 0xaa, captured_at(1, 0))];
+        let plan = [sealed(1, "a-name-nothing-would-choose.jpg", false)];
+
+        let replayed = replay_of(&plan, &batch);
+
+        assert_eq!(
+            replayed.device_files[0].vault_name,
+            VaultName::new("a-name-nothing-would-choose.jpg")
+        );
+    }
+
+    #[test]
+    fn a_replay_counts_what_it_committed() {
+        let batch = [
+            verified(1, "one.jpg", 0x02, captured_at(1, 0)),
+            verified(2, "copy.jpg", 0x03, captured_at(2, 0)),
+        ];
+        let plan = [
+            sealed(1, "2026-08-01_120000.jpg", false),
+            PlanEntry {
+                file: FileId(2),
+                action: PlanAction::Duplicate {
+                    name: VaultName::new("2026-08-01_120000.jpg"),
+                },
+                done: false,
+            },
+        ];
+
+        let replayed = replay_of(&plan, &batch);
+
+        assert_eq!(replayed.summary.imported, 1);
+        assert_eq!(replayed.summary.duplicates, 1);
+        // Only the import put bytes in the vault; the duplicate's staged file is deleted.
+        assert_eq!(replayed.summary.bytes_committed, 200);
+        assert_eq!(replayed.contents.len(), 1);
     }
 
     #[test]

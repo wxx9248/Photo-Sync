@@ -78,7 +78,14 @@ impl Store {
                 StoreResponse::Done
             }
             StoreRequest::SealCommitPlan { device, plan } => {
-                self.plans.insert(device.clone(), plan.clone());
+                let plan: Vec<PlanEntry> = plan
+                    .iter()
+                    .map(|entry| PlanEntry {
+                        done: false,
+                        ..entry.clone()
+                    })
+                    .collect();
+                self.plans.insert(device.clone(), plan);
                 self.done.insert(device.clone(), BTreeSet::new());
                 StoreResponse::Done
             }
@@ -90,6 +97,11 @@ impl Store {
                     .entry(device.clone())
                     .or_default()
                     .extend(files.iter().copied());
+                for entry in self.plans.entry(device.clone()).or_default() {
+                    if files.contains(&entry.file) {
+                        entry.done = true;
+                    }
+                }
                 StoreResponse::Done
             }
             StoreRequest::ClearCommitPlan { device } => {

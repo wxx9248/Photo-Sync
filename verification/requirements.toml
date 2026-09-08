@@ -161,7 +161,7 @@ quote = "after each fsync advances the watermark in the manifest (flushed)"
 id = "R-STAGE-007"
 section = "§7.6"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "every `.part` file is **truncated to its watermark**"
 note = "File size is not a safe offset: a buffered write can extend a file past its durable data."
 
@@ -303,28 +303,28 @@ quote = "Clearing removes in-progress partials too"
 id = "R-RECOVER-001"
 section = "§7.4"
 area = "RECOVER"
-status = "deferred"
+status = "active"
 quote = "Absent or unsealed write-log → discard it"
 
 [[requirement]]
 id = "R-RECOVER-002"
 section = "§7.4"
 area = "RECOVER"
-status = "deferred"
+status = "active"
 quote = "Sealed write-log → re-execute entries lacking done-marks."
 
 [[requirement]]
 id = "R-RECOVER-003"
 section = "§7.4"
 area = "RECOVER"
-status = "deferred"
+status = "active"
 quote = "a file already present at a target path is our own completed rename"
 
 [[requirement]]
 id = "R-RECOVER-004"
 section = "§7.4"
 area = "RECOVER"
-status = "deferred"
+status = "active"
 quote = "Replay index insertion (idempotent upsert"
 
 [[requirement]]

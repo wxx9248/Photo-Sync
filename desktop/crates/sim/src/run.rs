@@ -126,6 +126,26 @@ impl Simulation {
         });
     }
 
+    /// Delivers one event and performs what it leads to, up to but not including the first
+    /// effect the test names.
+    ///
+    /// This is how a crash is placed. The machine stops with that effect never having
+    /// happened, and everything queued behind it never having been asked for, which is what a
+    /// power loss looks like from the outside.
+    pub fn deliver_until(&mut self, event: Event, stop: fn(&Effect) -> bool) {
+        let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
+        while let Some(effect) = queue.pop_front() {
+            if stop(&effect) {
+                return;
+            }
+            let completion = self.perform(&effect);
+            self.log.push(effect);
+            if let Some(completion) = completion {
+                queue.extend(self.desktop.handle(completion));
+            }
+        }
+    }
+
     /// Delivers one event and answers none of it. Used where the property is that something
     /// has *not* happened yet.
     pub fn step(&mut self, event: Event) -> Vec<Effect> {
