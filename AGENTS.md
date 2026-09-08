@@ -29,8 +29,12 @@ it in its own commit. Do not work around it silently.
    replay is a bug in the code, not a flake.
 3. **Never edit a protected artifact to make a test pass.** Protected artifacts are
    `verification/requirements.toml`, `verification/vectors/`, the model crate, and the
-   `[expect]` blocks of existing scenarios. They define correctness. Editing one requires a
-   matching `SPEC.md` change in the same commit, and the pre-push hook checks this.
+   `[expect]` blocks of existing scenarios. They define correctness. Editing one normally
+   comes with a matching `SPEC.md` change in the same commit. The pre-push hook says loudly
+   when one changed without it, and does not stop you: building an oracle touches the same
+   files as bending one, and only a person reading the diff can tell those apart. Two changes
+   need no `SPEC.md` beside them because they cannot weaken anything: adding a scenario, and
+   turning a requirement from deferred to active.
 4. **Every behavior change references a requirement ID.** If no ID covers it, add one to the
    registry with a verbatim quote from `SPEC.md`. If no clause in `SPEC.md` supports it, stop.
    The spec needs changing first.

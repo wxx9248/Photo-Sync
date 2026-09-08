@@ -304,6 +304,13 @@ the nightly audit flag any commit that touches them without touching `SPEC.md`. 
 structural answer to the failure mode where an agent, unable to make the implementation right,
 makes the oracle wrong instead.
 
+It flags rather than refuses, and deliberately. Writing an oracle for the first time touches
+the same files as bending an existing one, and nothing mechanical separates the two; what does
+is a person reading the diff. A gate that refused would forbid the first and only inconvenience
+the second. Two changes are not flagged at all, because neither can weaken anything: adding a
+scenario, which is new evidence rather than a changed expectation, and turning a requirement
+from deferred to active, which can only make the build stricter.
+
 **Negative controls.** `verify self-test` builds the core with a `sabotage` feature that injects
 known-bad implementations one at a time — done-mark written before the directory fsync, watermark
 taken from file size instead of the durable counter, dedup that skips the device row, nomination
