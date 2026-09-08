@@ -47,16 +47,24 @@ around it.
 
 ## 4. Where the work is now
 
-Milestone M0 is complete, and M1 is in progress. `docs/ROADMAP.md` defines both.
+Milestones M0 and M1 are complete, and M2 is in progress. `docs/ROADMAP.md` defines all three.
 
-What exists: the protobuf schema, the Rust workspace, the `Event` and `Effect` vocabulary with
-the port traits and typed store requests in `photo-sync-core`, the `./verify` runner with its
-quick tier, the requirement registry with seventy four entries, and skeletons for the model, the
-simulator, the shell, and the Android project.
+What exists is one thin path, end to end. A phone pairs with the desktop, sends a photo, and the
+desktop verifies it, stages it, commits it into the vault by rename under a name built from when
+the photo was taken, records it, and offers it for deletion only when it can see the vault copy.
+That path runs three ways: as unit tests, as acceptance scenarios in `verification/scenarios/`,
+and over a real socket against real files and real SQLite. `photo-sync-core` holds the
+decisions, `photo-sync-sim` runs them against storage it can lie to, and the shell runs them
+against the machine.
 
-What does not exist yet: the session state machine, the simulator and its filesystem, the model
-transition function, the gRPC server, storage adapters, the user interface, and the Android
-application. M1 builds the thinnest path through all of it.
+What does not exist yet is what M2 onwards builds: durability modelling in the simulator, the
+SQLite virtual file system, crashes at an effect boundary, the executable model and its
+differential comparison, startup recovery, concurrent transfers, discovery, the user interface,
+and the Android application.
+
+Two smaller gaps are worth knowing before you trip over them. Nothing reads a capture time out
+of a photograph yet, so a vault name falls back to the file's modification time, read in UTC.
+And nothing applies the phone's modification time to the stored copy.
 
 ## 5. The working loop
 
