@@ -98,8 +98,9 @@ confirms whether the meaning changed and updates both files together. This is wh
 registry an actual projection of the spec rather than a parallel document that drifts. `SPEC.md`
 itself stays clean prose with no identifiers embedded in it.
 
-ID scheme: `R-<AREA>-<NNN>` with areas `CATALOG`, `DIFF`, `XFER`, `STAGE`, `COMMIT`, `RECOVER`,
-`INDEX`, `DELETE`, `PAIR`, `DISCOVER`, `SESSION`, `UI`, `PERF`. Numbers are never reused.
+ID scheme: `R-<AREA>-<NNN>` with areas `CATALOG`, `DIFF`, `XFER`, `STAGE`, `NAME`, `COMMIT`,
+`RECOVER`, `INDEX`, `DELETE`, `PAIR`, `DISCOVER`, `SESSION`, `UI`, `PERF`. Numbers are never
+reused.
 
 Coverage is declared at the test site and extracted statically:
 
