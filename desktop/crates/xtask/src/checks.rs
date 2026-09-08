@@ -15,7 +15,22 @@ const PROTECTED: [&str; 4] = [
     "desktop/crates/model/",
 ];
 
+/// Where a new file is evidence rather than a changed oracle.
+///
+/// `AGENTS.md` and `docs/VERIFICATION.md` protect the expectations of scenarios that already
+/// exist, not the act of writing a new one. Guarding the directory as a whole would mean a
+/// specification change for every scenario added, which teaches the opposite lesson to the
+/// one the gate exists to teach.
+const ADDABLE: &str = "verification/scenarios/";
+
 const SPECIFICATION: &str = "docs/SPEC.md";
+
+/// One path the range changed, and whether the change created it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Change {
+    pub path: String,
+    pub added: bool,
+}
 
 pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     let desktop = root.join("desktop");
@@ -120,7 +135,7 @@ fn requirement_matrix(root: &Path) -> Result<CheckResult, String> {
 pub fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
     let range = format!("{against}...HEAD");
     let output = std::process::Command::new("git")
-        .args(["diff", "--name-only", &range])
+        .args(["diff", "--name-status", &range])
         .current_dir(root)
         .output()
         .map_err(|error| format!("cannot run git: {error}"))?;
@@ -131,26 +146,15 @@ pub fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
         ));
     }
 
-    let changed: Vec<String> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::to_string)
-        .collect();
-
-    let touched: Vec<&String> = changed
-        .iter()
-        .filter(|path| {
-            PROTECTED
-                .iter()
-                .any(|protected| path.starts_with(protected))
-        })
-        .collect();
+    let changed = parse_changes(&String::from_utf8_lossy(&output.stdout));
+    let touched = oracles_touched(&changed);
 
     if touched.is_empty() {
         println!("protected-artifacts: nothing protected changed");
         return Ok(true);
     }
 
-    if changed.iter().any(|path| path == SPECIFICATION) {
+    if changed.iter().any(|change| change.path == SPECIFICATION) {
         println!(
             "protected-artifacts: {} changed alongside the specification",
             touched.len()
@@ -159,11 +163,41 @@ pub fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
     }
 
     println!("protected-artifacts: these define correctness and changed without a spec change");
-    for path in touched {
-        println!("  {path}");
+    for change in touched {
+        println!("  {}", change.path);
     }
     println!("Change {SPECIFICATION} in the same commit, or revert them.");
     Ok(false)
+}
+
+/// Reads `git diff --name-status`. A rename is reported as its destination, which is the
+/// path a reviewer would look at.
+fn parse_changes(output: &str) -> Vec<Change> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\t');
+            let status = fields.next()?;
+            let path = fields.next_back()?;
+            Some(Change {
+                path: path.to_string(),
+                added: status.starts_with('A'),
+            })
+        })
+        .collect()
+}
+
+/// The changes that alter something defining correctness.
+fn oracles_touched(changed: &[Change]) -> Vec<&Change> {
+    changed
+        .iter()
+        .filter(|change| {
+            let protected = PROTECTED
+                .iter()
+                .any(|protected| change.path.starts_with(protected));
+            protected && !(change.added && change.path.starts_with(ADDABLE))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -179,6 +213,68 @@ mod tests {
                 "{path} should be repository relative"
             );
         }
+    }
+
+    fn change(status: &str, path: &str) -> Change {
+        Change {
+            path: path.to_string(),
+            added: status.starts_with('A'),
+        }
+    }
+
+    #[test]
+    fn a_new_scenario_is_evidence_rather_than_a_changed_oracle() {
+        let changed = [change("A", "verification/scenarios/S-XFER-001.toml")];
+
+        assert!(oracles_touched(&changed).is_empty());
+    }
+
+    #[test]
+    fn editing_a_scenario_that_already_exists_is_still_guarded() {
+        let changed = [change("M", "verification/scenarios/S-XFER-001.toml")];
+
+        assert_eq!(oracles_touched(&changed).len(), 1);
+    }
+
+    #[test]
+    fn deleting_a_scenario_is_still_guarded() {
+        let changed = [change("D", "verification/scenarios/S-XFER-001.toml")];
+
+        assert_eq!(oracles_touched(&changed).len(), 1);
+    }
+
+    #[test]
+    fn a_new_requirement_is_guarded_the_same_as_a_changed_one() {
+        let changed = [change("A", "verification/requirements.toml")];
+
+        assert_eq!(oracles_touched(&changed).len(), 1);
+    }
+
+    #[test]
+    fn ordinary_code_is_not_protected() {
+        let changed = [change("M", "desktop/crates/core/src/desktop.rs")];
+
+        assert!(oracles_touched(&changed).is_empty());
+    }
+
+    #[test]
+    fn a_rename_is_read_as_its_destination() {
+        let parsed = parse_changes("R100\tdocs/OLD.md\tdocs/NEW.md\n");
+
+        assert_eq!(parsed, vec![change("R100", "docs/NEW.md")]);
+    }
+
+    #[test]
+    fn a_status_line_yields_the_path_and_whether_it_is_new() {
+        let parsed = parse_changes("A\tverification/scenarios/one.toml\nM\tdocs/SPEC.md\n");
+
+        assert_eq!(
+            parsed,
+            vec![
+                change("A", "verification/scenarios/one.toml"),
+                change("M", "docs/SPEC.md"),
+            ]
+        );
     }
 
     #[test]
