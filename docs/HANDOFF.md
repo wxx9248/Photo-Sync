@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1.
+Written at the close of milestone M1, and added to as M2 goes.
 
 ## 1. Run these once
 
@@ -82,7 +82,37 @@ out in full and a test anchors the six digits it produces. The Kotlin half has t
 same answer. The conformance vector that would prove it lands in M8; a vector only one
 implementation reads is not yet doing the job vectors exist for.
 
-## 5. Known gaps, deliberately left
+## 5. What M2 has changed so far
+
+The simulated filesystem now loses what a real one loses: a file's bytes become durable when
+that file is synced, a name when its directory is synced, and a crash keeps nothing else. A
+crash also leaves a file at whatever length a buffered write had moved it to, with the tail
+past the durable data coming back as zeroes.
+
+It found two things on its first runs, and one of them changed behaviour.
+
+**A partial never survived a power loss.** Nothing synced the staging directory after creating
+one, so the file's name was never durable and `SPEC.md` §7.6's instruction to cut every `.part`
+file back to its watermark had nothing to act on: every interrupted transfer would have started
+from zero. The desktop now syncs that directory when it creates a partial. **This costs one
+directory fsync per file** — about 1,180 of them for the library §3.4 describes — and buys back
+every interrupted transfer. If that trade is wrong for your disks, it is one effect to remove.
+
+**Staging is cleared but not durably.** §7.3 step 3 clears the write-log, the manifest, and then
+the files, and nothing syncs the staging directory afterwards. The manifest and log are in
+SQLite and so are durable, but a crash immediately after a commit can bring the files back with
+no rows describing them. Nothing is lost and nothing is wrongly deleted; the files are orphaned
+and nothing sweeps them up. Whether that wants a directory sync at the end of §7.3 or a sweep at
+startup is a decision, and it is the sort of thing the campaign will keep finding until it is
+made.
+
+**One approximation to know about.** A crash discards what the filesystem had not written down,
+and treats both databases as intact. `STACK.md` §3.5 runs them in WAL mode with
+`synchronous=FULL`, so a transaction that returned did survive and one that did not never
+existed; what this does not yet model is a crash inside SQLite's own writing. That is what the
+virtual file system M2 also calls for is for, and it is not built.
+
+## 6. Known gaps, deliberately left
 
 These are noted where the code makes them, not just here.
 
