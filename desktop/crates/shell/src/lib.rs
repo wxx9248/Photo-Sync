@@ -8,3 +8,4 @@
 //! [`Effect`]: photo_sync_core::Effect
 
 pub mod storage;
+pub mod store;

@@ -23,6 +23,8 @@ photo-sync-sim = { path = "crates/sim" }
 
 prost = "0.14.4"
 prost-build = "0.14.4"
+refinery = { version = "0.9.2", default-features = false, features = ["rusqlite"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.10.9"
 serde_json = "1.0.151"

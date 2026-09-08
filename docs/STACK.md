@@ -151,10 +151,14 @@ going through libc wrappers.
 
 ### 3.5 Persistence
 
-**rusqlite 0.40** with the `bundled` feature — SQLite is compiled into the binary, so there is
+**rusqlite 0.39** with the `bundled` feature — SQLite is compiled into the binary, so there is
 no `libsqlite3` runtime dependency and no version skew with the distribution. **refinery 0.9**
 manages schema migrations as versioned `.sql` files. Both databases run `journal_mode=WAL`
 and `synchronous=FULL`.
+
+The rusqlite version is the one refinery supports. Refinery links SQLite through rusqlite, and
+two rusqlite majors in one graph is a duplicate `libsqlite3-sys` that Cargo refuses, so
+whichever is behind sets the version for both. Raising it means waiting for refinery.
 
 Two databases, mirroring the spec's separation of concerns:
 
