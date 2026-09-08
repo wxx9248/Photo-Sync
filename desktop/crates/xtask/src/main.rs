@@ -6,6 +6,7 @@
 mod checks;
 mod cli;
 mod coverage;
+mod doctor;
 mod report;
 mod requirements;
 mod spec_check;
@@ -45,6 +46,7 @@ fn run(command: Command) -> Result<bool, String> {
         Command::Verify(tier) => checks::run_tier(&root, tier),
         Command::SpecCheck => spec_check::run(&root).map(|outcome| outcome.passed()),
         Command::Matrix => coverage::print_matrix(&root),
+        Command::Doctor => doctor::run(&root),
         Command::ProtectedArtifacts { against } => checks::protected_artifacts(&root, &against),
         Command::NotYetBuilt { name, milestone } => Err(format!(
             "`{name}` arrives in milestone {milestone}. See docs/ROADMAP.md."

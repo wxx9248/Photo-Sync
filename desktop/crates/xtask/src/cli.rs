@@ -5,6 +5,7 @@ pub enum Command {
     Verify(Tier),
     SpecCheck,
     Matrix,
+    Doctor,
     ProtectedArtifacts { against: String },
     NotYetBuilt { name: String, milestone: String },
 }
@@ -36,6 +37,7 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
         ["verify", "nightly"] => Ok(Command::Verify(Tier::Nightly)),
         ["verify", "spec-check"] | ["spec-check"] => Ok(Command::SpecCheck),
         ["verify", "matrix"] | ["matrix"] => Ok(Command::Matrix),
+        ["verify", "doctor"] | ["doctor"] => Ok(Command::Doctor),
         ["verify", "protected-artifacts", "--against", reference]
         | ["protected-artifacts", "--against", reference] => Ok(Command::ProtectedArtifacts {
             against: (*reference).to_string(),
@@ -61,6 +63,7 @@ pub fn usage() -> String {
         "  nightly                        full plus mutation, emulator, and audits",
         "  spec-check                     registry quotes still match SPEC.md",
         "  matrix                         requirement coverage",
+        "  doctor                         whether this machine can run each tier",
         "  protected-artifacts --against <ref>",
     ]
     .join("\n")

@@ -343,11 +343,11 @@ toolchain, calls `./verify full`, and keeps the JSON report as an artifact. The 
 locally, so a check behaves the same way in both places. The pre-push hook runs the quick tier
 and the protected-artifact comparison before a push leaves the machine.
 
-The long tiers run on the development machine rather than on hosted runners. Seed campaigns and
-mutation testing want a machine that is not competing with anything else, and their results are
-read at the start of the next session from `verification/reports/`. That machine also runs the
-emulator suite, since its processor is passed through and nested virtualisation gives it a
-working `/dev/kvm`.
+The nightly tier runs on a schedule, sharded across hosted jobs so each stays inside the limit
+that applies to one job. Seed campaigns and mutation testing both divide cleanly, so parallel
+jobs finish sooner than one long run. The development machine runs the same tier directly when
+someone wants a deep campaign, and it is where the emulator suite runs, since its processor is
+passed through and nested virtualisation gives it a working `/dev/kvm`.
 
 One kind of test stays outside it. A session with a real phone needs multicast on the local
 network, which the machine's NAT interface does not carry, so acceptance runs on the desktop
@@ -387,5 +387,5 @@ emulator sessions do not use discovery at all.
 | V12 | Negative controls: sabotage builds prove the harness detects known-bad implementations |
 | V13 | Android split: JVM tests with a fake desktop, managed-device suite nightly, OEM behavior manual |
 | V14 | Performance split: configuration assertions are gated, wall-clock metrics are tracked only |
-| V15 | Hosted runners gate every push with the quick and full tiers; the development machine runs the long tiers |
+| V15 | Hosted runners gate every push and run the sharded nightly tier; no self-hosted runner |
 | V16 | Work runs in an x86_64 Fedora KDE virtual machine, including the emulator; sessions with a real phone run on the desktop |

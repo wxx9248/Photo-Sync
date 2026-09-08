@@ -87,13 +87,15 @@ installs the Rust toolchain, `protoc`, and `cargo-nextest`, then calls `./verify
 the JSON report as an artifact. Everything CI does goes through `./verify`, so a check that
 passes locally passes there for the same reasons.
 
-Nightly campaigns and mutation testing want the virtual machine registered as a self-hosted
-runner. That job is added once the runner exists, because a scheduled job with no runner
-produces queued builds rather than results.
+The nightly tier will run as a scheduled workflow on hosted runners, sharded across jobs so that
+each stays inside the six hour limit that applies to a single job. Seed campaigns and mutation
+testing both divide cleanly, and running them in parallel jobs finishes sooner than running them
+in sequence on one machine.
 
-**A self-hosted runner on a public repository runs code from pull requests, including from
-forks.** Restrict the self-hosted job to `push` on `main` and to `schedule`. Never let
-`pull_request` reach it.
+No self-hosted runner is planned. It would only buy one uninterrupted long run, which sharding
+gives another way, and a self-hosted runner on a public repository executes code from pull
+requests, including from forks. The development machine still runs `./verify nightly` directly
+whenever someone wants a deep campaign under their own eye.
 
 ## Running the tiers
 

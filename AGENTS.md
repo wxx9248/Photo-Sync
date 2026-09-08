@@ -1,6 +1,7 @@
 # Operating rules
 
-Read this before changing anything in this repository.
+Read this before changing anything in this repository. If you are starting cold, read
+`docs/BOOTSTRAP.md` first: it puts these rules in order and tells you where the work is.
 
 ## Documents
 
