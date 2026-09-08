@@ -42,6 +42,14 @@ pub enum Effect {
         length: u64,
     },
 
+    /// Renames a verified staging file from `<id>.part` to `<id>`. The suffix is what startup
+    /// recovery uses to tell a partial apart from a file whose digest already matched, so
+    /// stripping it is the moment a transfer stops being resumable and becomes committable.
+    FinalizeStagingFile {
+        op: OpId,
+        file: FileId,
+    },
+
     RenameIntoVault {
         op: OpId,
         file: FileId,

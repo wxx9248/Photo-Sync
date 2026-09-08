@@ -24,6 +24,7 @@ photo-sync-sim = { path = "crates/sim" }
 prost = "0.14.4"
 prost-build = "0.14.4"
 serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.10.9"
 serde_json = "1.0.151"
 thiserror = "2.0.20"
 toml = "1.1.5"

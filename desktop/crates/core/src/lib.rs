@@ -6,13 +6,18 @@
 //! run inside the simulator described in `docs/VERIFICATION.md`.
 
 pub mod catalog;
+pub mod desktop;
+pub mod digest;
 pub mod effect;
 pub mod event;
 pub mod id;
 pub mod port;
+mod session;
 pub mod store;
 
 pub use catalog::{Catalog, CatalogEntry};
+pub use desktop::Desktop;
+pub use digest::RunningDigest;
 pub use effect::{Directory, Effect, RejectReason};
 pub use event::Event;
 pub use id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp, VaultName};

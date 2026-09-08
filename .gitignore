@@ -18,6 +18,8 @@
 # Harness output
 /verification/reports/*.json
 /verification/reports/traces/
+/desktop/mutants.out/
+/desktop/mutants.out.old/
 
 # Editors and OS
 .idea/

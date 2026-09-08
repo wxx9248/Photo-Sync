@@ -55,7 +55,10 @@ enforced mechanically rather than by review:
   `std::time::Instant`, and `std::thread`, denied in the core crate;
 * determinism rules on top: no iteration over `HashMap`/`HashSet` where order is observable
   (use `BTreeMap`/`BTreeSet` or sort explicitly), no floating point in decisions, no ambient
-  randomness — staging IDs and collision suffixes come from the injected `Rng`.
+  randomness. The core reaches no port, so the values it has to invent come from counters it
+  can justify instead: a staging identifier continues above the highest the manifest holds,
+  read once at startup, and a collision suffix counts up as `SPEC.md` §7.2 describes. Both
+  replay from a trace without a seed. The `Rng` port stays for the shell.
 
 The `Effect` enum is not an implementation detail; it is the port surface, and adding a variant
 is how a new kind of side effect becomes visible to the simulator, the model, and the fault

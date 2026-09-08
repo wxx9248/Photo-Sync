@@ -38,6 +38,9 @@ pub trait FileOps {
 
     fn truncate(&self, file: FileId, length: u64) -> Result<(), StorageError>;
 
+    /// Renames `<id>.part` to `<id>` once the digest matched.
+    fn finalize_staging_file(&self, file: FileId) -> Result<(), StorageError>;
+
     fn rename_into_vault(&self, file: FileId, name: &VaultName) -> Result<(), StorageError>;
 
     fn remove_staging_file(&self, file: FileId) -> Result<(), StorageError>;

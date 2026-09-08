@@ -13,6 +13,15 @@ pub enum StoreRequest {
         device: DeviceId,
     },
 
+    /// The largest staging identifier the manifest currently holds, over every device.
+    ///
+    /// Read once at startup. Identifiers have to be unique across devices, because the
+    /// requests that name a staged file, such as `AdvanceWatermark`, carry the identifier and
+    /// not the device, and so does every effect that touches the file. Continuing above the
+    /// highest surviving row is what keeps a fresh identifier from colliding with a partial
+    /// left behind by a device that has not connected yet.
+    HighestStagingFileId,
+
     BeginStagingEntry {
         device: DeviceId,
         entry: StagingEntry,
@@ -88,6 +97,7 @@ pub enum StoreRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreResponse {
     Done,
+    HighestStagingFileId(Option<FileId>),
     StagingEntries(Vec<StagingEntry>),
     CommitPlan(Option<Vec<PlanEntry>>),
     Content(Vec<ContentRow>),
