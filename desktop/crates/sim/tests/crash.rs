@@ -230,3 +230,87 @@ fn only_name(sim: &Simulation) -> VaultName {
         _ => panic!("the vault holds {} files", sim.storage.vault().len()),
     }
 }
+
+#[test]
+fn a_partial_longer_than_its_watermark_is_cut_back_to_it() {
+    covers!("R-STAGE-007");
+    // Three pieces: two that together cross the interval the desktop lets sit unsynced, and
+    // one after it that never does. Only the first two were ever proven.
+    let piece = vec![b'p'; 9 << 20];
+    let tail = vec![b't'; 1 << 20];
+    let proven = piece.len() * 2;
+    let size = (proven + tail.len()) as u64;
+
+    let mut sim = desktop();
+    sim.deliver(Event::PeerConnected {
+        device: phone(),
+        name: "Kitchen phone".to_string(),
+    });
+    sim.deliver(Event::CatalogSubmitted {
+        device: phone(),
+        entries: vec![CatalogEntry {
+            path: photo_path(),
+            size,
+            mtime: Timestamp(MTIME),
+        }],
+        total_bytes: size,
+    });
+    sim.deliver(Event::DiffRequested { device: phone() });
+    let file = match sim.take_log().into_iter().find_map(|effect| match effect {
+        photo_sync_core::Effect::SendDiff { to_send, .. } => to_send.first().map(|one| one.file),
+        _ => None,
+    }) {
+        Some(file) => file,
+        None => panic!("the desktop asked for nothing"),
+    };
+
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    for (offset, bytes) in [(0, &piece), (piece.len(), &piece)] {
+        sim.deliver(Event::ChunkArrived {
+            device: phone(),
+            file,
+            offset: offset as u64,
+            data: bytes.clone(),
+        });
+    }
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: proven as u64,
+        data: tail,
+    });
+
+    sim.restart();
+
+    // The file came back longer than anything a sync had proven, with a tail that is not the
+    // photograph. Recovery cuts it back to the watermark rather than to the length.
+    let kept = match sim.storage.staging().get(&file) {
+        Some(staged) => staged.bytes.clone(),
+        None => panic!("the partial did not survive"),
+    };
+    assert_eq!(kept.len(), proven);
+    assert!(kept.iter().all(|byte| *byte == b'p'));
+}
+
+#[test]
+fn a_verified_leftover_is_left_alone_when_the_machine_returns() {
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+
+    // Verified but not committed: the phone never sent the finish signal.
+    sim.restart();
+
+    let cut_back = sim.log().iter().any(|effect| {
+        matches!(effect, photo_sync_core::Effect::TruncateFile { file: cut, .. } if *cut == file)
+    });
+    assert!(
+        !cut_back,
+        "a file whose digest already matched was cut back anyway"
+    );
+}

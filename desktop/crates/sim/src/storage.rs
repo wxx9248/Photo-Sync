@@ -191,8 +191,30 @@ impl Storage {
     }
 
     /// Everything the machine did not get around to writing down is gone.
+    ///
+    /// A file keeps only the bytes a sync had proven, but not necessarily its length: a
+    /// buffered write that never reached the disk can still have moved the file's size, and
+    /// what lies past the durable data is then whatever the disk held. That is the trap
+    /// `SPEC.md` §7.6 exists to close, and a crash that quietly cut every file back to its
+    /// durable data would close it for free and prove nothing. So the tail comes back as
+    /// zeroes, which is the shape a resumed transfer would silently accept.
     pub fn crash(&mut self) {
+        let lengths: BTreeMap<FileId, usize> = self
+            .live
+            .staging
+            .iter()
+            .map(|(file, staged)| (*file, staged.bytes.len()))
+            .collect();
+
         self.live = self.durable.clone();
+        for (file, staged) in &mut self.live.staging {
+            if let Some(length) = lengths.get(file)
+                && *length > staged.bytes.len()
+            {
+                staged.bytes.resize(*length, 0);
+            }
+        }
+
         self.synced
             .retain(|file, _| self.durable.staging.contains_key(file));
         for (file, staged) in &self.durable.staging {
@@ -336,7 +358,31 @@ mod tests {
     }
 
     #[test]
-    fn bytes_written_after_the_last_sync_are_the_ones_lost() {
+    fn bytes_written_after_the_last_sync_come_back_as_nothing() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"half a");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+
+        storage.write_at(FileId(1), 6, b" photograph");
+        storage.crash();
+
+        // The length moved even though the bytes did not, so the file is longer than
+        // anything that was proven and its tail is not the photograph. Reading it back as
+        // though it were is exactly what §7.6's watermark stops.
+        let mut expected = b"half a".to_vec();
+        expected.resize(17, 0);
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn what_a_crash_kept_is_only_what_was_proven() {
         let mut storage = Storage::new();
         written(&mut storage, FileId(1), b"half a");
         storage.sync_file(FileId(1));
@@ -347,7 +393,7 @@ mod tests {
 
         assert_eq!(
             storage
-                .staging()
+                .durable_staging()
                 .get(&FileId(1))
                 .map(|file| file.bytes.clone()),
             Some(b"half a".to_vec())
@@ -359,16 +405,24 @@ mod tests {
         let mut storage = Storage::new();
         written(&mut storage, FileId(1), b"one photograph");
 
-        // The trap SPEC.md §7.6 is written against: a name can outlive its contents.
+        // The trap SPEC.md §7.6 is written against: a name can outlive its contents, and the
+        // file is the right length while holding none of them.
         storage.sync_directory(&staging());
         storage.crash();
 
         assert_eq!(
             storage
-                .staging()
+                .durable_staging()
                 .get(&FileId(1))
                 .map(|file| file.bytes.clone()),
             Some(Vec::new())
+        );
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(vec![0; 14])
         );
     }
 
