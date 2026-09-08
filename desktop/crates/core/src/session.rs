@@ -211,6 +211,9 @@ fn describes(staged: &StagingEntry, entry: &CatalogEntry) -> bool {
 pub(crate) struct Upload {
     pub size: u64,
 
+    /// Kept so the readings a vault name may be built from can be taken against it.
+    pub mtime: Timestamp,
+
     /// Absolute offset of the next byte expected from the phone.
     pub received: u64,
 
@@ -362,6 +365,7 @@ mod tests {
             mtime: Timestamp(mtime),
             durable_bytes: 0,
             digest: None,
+            name_sources: Vec::new(),
         }
     }
 

@@ -5,6 +5,7 @@
 
 use crate::catalog::CatalogEntry;
 use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp};
+use crate::naming::CivilTime;
 use crate::port::StorageError;
 use crate::store::{StoreError, StoreResponse};
 
@@ -112,6 +113,9 @@ pub enum StorageOutcome {
         present: bool,
         size: u64,
     },
+
+    /// Wall-clock readings a vault name may be built from, in the order of `SPEC.md` §7.2.
+    NameSources(Vec<CivilTime>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

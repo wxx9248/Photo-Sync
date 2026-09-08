@@ -14,7 +14,7 @@ use photo_sync_core::port::StorageError;
 use photo_sync_core::store::{
     DeviceFileRow, StagingEntry, StoreError, StoreRequest, StoreResponse,
 };
-use photo_sync_core::{CatalogEntry, Desktop, RunningDigest};
+use photo_sync_core::{CatalogEntry, CivilTime, Desktop, RunningDigest};
 
 // ---- the desktop under test, with somewhere to put things ------------------------------
 
@@ -32,6 +32,9 @@ struct Desk {
     /// Set to refuse the next manifest change, which a full disk causes just as readily.
     refuse_manifest: bool,
 
+    /// What the shell reports a verified file's vault name may be built from.
+    name_sources: Result<Vec<CivilTime>, StorageError>,
+
     log: Vec<Effect>,
 }
 
@@ -44,6 +47,7 @@ impl Desk {
             free_space: u64::MAX,
             refuse_writes: false,
             refuse_manifest: false,
+            name_sources: Ok(vec![CAPTURED]),
             log: Vec::new(),
         }
     }
@@ -85,6 +89,10 @@ impl Desk {
                     result: Err(StorageError::NoSpace),
                 })
             }
+            Effect::ReadNameSources { op, .. } => Some(Event::StorageOpCompleted {
+                op: *op,
+                result: self.name_sources.clone().map(StorageOutcome::NameSources),
+            }),
             Effect::CreateStagingFile { op, .. }
             | Effect::WriteChunk { op, .. }
             | Effect::SyncFile { op, .. }
@@ -141,9 +149,14 @@ impl Desk {
                 }
                 StoreResponse::Done
             }
-            StoreRequest::MarkStagingEntryVerified { file, digest } => {
+            StoreRequest::MarkStagingEntryVerified {
+                file,
+                digest,
+                name_sources,
+            } => {
                 if let Some((_, entry)) = self.manifest.get_mut(file) {
                     entry.digest = Some(*digest);
+                    entry.name_sources.clone_from(name_sources);
                 }
                 StoreResponse::Done
             }
@@ -252,6 +265,16 @@ fn is_entry_drop(effect: &Effect) -> bool {
 const PHOTO: &[u8] = b"the bytes of one photograph";
 const PATH: &str = "DCIM/Camera/IMG_0001.jpg";
 const MTIME: i64 = 1_756_000_000;
+
+/// The reading the shell reports for a photo it could date.
+const CAPTURED: CivilTime = CivilTime {
+    year: 2026,
+    month: 8,
+    day: 24,
+    hour: 9,
+    minute: 30,
+    second: 0,
+};
 
 fn phone() -> DeviceId {
     DeviceId::new("phone-a")
@@ -610,6 +633,7 @@ fn a_fresh_identifier_never_collides_with_another_device_partial() {
                 mtime: Timestamp(MTIME),
                 durable_bytes: 0,
                 digest: None,
+                name_sources: Vec::new(),
             },
         ),
     );
@@ -727,6 +751,7 @@ fn a_partial_of_a_photo_that_has_since_changed_is_dropped_and_removed() {
                 mtime: Timestamp(MTIME - 500),
                 durable_bytes: 4,
                 digest: None,
+                name_sources: Vec::new(),
             },
         ),
     );
@@ -840,4 +865,54 @@ fn a_manifest_the_store_refuses_ends_that_transfer() {
     open_upload(&mut desk, file, 0);
 
     assert_eq!(upload_outcome(&desk.take_log()), UploadOutcome::WriteFailed);
+}
+
+#[test]
+fn a_verified_photo_records_where_its_name_may_come_from() {
+    let mut desk = Desk::new();
+
+    offer_one_photo(&mut desk);
+    let (to_send, _) = diff_of(&desk.take_log());
+    let file = to_send[0].file;
+    open_upload(&mut desk, file, 0);
+    send_bytes(&mut desk, file, 0, PHOTO);
+    close_upload(&mut desk, file, digest_of(PHOTO));
+
+    let log = desk.take_log();
+    let sources_read = position_of(&log, |effect| {
+        matches!(effect, Effect::ReadNameSources { .. })
+    });
+    // Taken after the suffix is stripped and before the manifest records the file.
+    assert!(position_of(&log, is_finalize) < sources_read);
+    assert!(sources_read < position_of(&log, is_marked_verified));
+    assert_eq!(
+        desk.staged(file).map(|entry| entry.name_sources.as_slice()),
+        Some([CAPTURED].as_slice())
+    );
+}
+
+#[test]
+fn a_photo_that_will_not_say_when_it_was_taken_is_still_kept() {
+    let mut desk = Desk::new();
+    desk.name_sources = Err(StorageError::Failed("unreadable".to_string()));
+
+    offer_one_photo(&mut desk);
+    let (to_send, _) = diff_of(&desk.take_log());
+    let file = to_send[0].file;
+    open_upload(&mut desk, file, 0);
+    send_bytes(&mut desk, file, 0, PHOTO);
+    close_upload(&mut desk, file, digest_of(PHOTO));
+
+    assert_eq!(
+        upload_outcome(&desk.take_log()),
+        UploadOutcome::Verified {
+            durable_bytes: PHOTO.len() as u64
+        }
+    );
+    let entry = match desk.staged(file) {
+        Some(entry) => entry,
+        None => panic!("the manifest lost the entry"),
+    };
+    assert_eq!(entry.digest, Some(digest_of(PHOTO)));
+    assert!(entry.name_sources.is_empty());
 }

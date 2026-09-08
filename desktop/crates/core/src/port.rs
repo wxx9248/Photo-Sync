@@ -41,6 +41,14 @@ pub trait FileOps {
     /// Renames `<id>.part` to `<id>` once the digest matched.
     fn finalize_staging_file(&self, file: FileId) -> Result<(), StorageError>;
 
+    /// Reads the wall-clock readings a vault name may be built from, localizing both the
+    /// capture time it finds and the modification time it is given.
+    fn read_name_sources(
+        &self,
+        file: FileId,
+        mtime: Timestamp,
+    ) -> Result<Vec<crate::naming::CivilTime>, StorageError>;
+
     fn rename_into_vault(&self, file: FileId, name: &VaultName) -> Result<(), StorageError>;
 
     fn remove_staging_file(&self, file: FileId) -> Result<(), StorageError>;

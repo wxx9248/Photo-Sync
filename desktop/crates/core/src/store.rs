@@ -5,6 +5,7 @@
 //! simulator answer the same requests from memory.
 
 use crate::id::{DeviceId, DevicePath, FileId, Sha256, Timestamp, VaultName};
+use crate::naming::CivilTime;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreRequest {
@@ -37,6 +38,7 @@ pub enum StoreRequest {
     MarkStagingEntryVerified {
         file: FileId,
         digest: Sha256,
+        name_sources: Vec<CivilTime>,
     },
 
     DropStagingEntry {
@@ -119,6 +121,10 @@ pub struct StagingEntry {
 
     /// Set once the streamed digest matched what the phone stated.
     pub digest: Option<Sha256>,
+
+    /// Where this file's vault name may come from, in the order of `SPEC.md` §7.2, recorded
+    /// while the file was still open. A commit is pure metadata work and never reopens it.
+    pub name_sources: Vec<CivilTime>,
 }
 
 impl StagingEntry {

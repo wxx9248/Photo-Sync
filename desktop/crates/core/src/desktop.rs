@@ -16,6 +16,7 @@ use crate::digest::RunningDigest;
 use crate::effect::{Effect, LogLevel, RejectReason, ToSend, UploadOutcome};
 use crate::event::{Event, StorageOutcome};
 use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256};
+use crate::naming::CivilTime;
 use crate::port::StorageError;
 use crate::session::{FileIds, Input, Phase, PlannedSend, Session, Upload, UploadState, classify};
 use crate::store::{StagingEntry, StoreError, StoreRequest, StoreResponse};
@@ -85,6 +86,11 @@ enum Pending {
     SyncFile(Sync),
     AdvanceWatermark(Sync),
     FinalizeFile {
+        device: DeviceId,
+        file: FileId,
+        digest: Sha256,
+    },
+    ReadNameSources {
         device: DeviceId,
         file: FileId,
         digest: Sha256,
@@ -548,6 +554,7 @@ impl Desktop {
     ) -> Vec<Effect> {
         let upload = Upload {
             size: planned.size,
+            mtime: planned.mtime,
             received: offset,
             durable: offset,
             unsynced: 0,
@@ -572,6 +579,7 @@ impl Desktop {
             mtime: planned.mtime,
             durable_bytes: 0,
             digest: None,
+            name_sources: Vec::new(),
         };
         let begin = self.begin(Pending::BeginEntry {
             device: device.clone(),
@@ -841,11 +849,32 @@ impl Desktop {
         ]
     }
 
+    /// The file is verified and sitting under its final staging name. Before the manifest
+    /// records it, the readings its vault name may be built from are taken while the file is
+    /// still there to read, because `SPEC.md` §7.3 keeps the commit itself to metadata.
     fn staging_file_finalized(
         &mut self,
         device: &DeviceId,
         file: FileId,
         digest: Sha256,
+    ) -> Vec<Effect> {
+        let Some(mtime) = self.upload(device, file).map(|upload| upload.mtime) else {
+            return self.record_verified(device, file, digest, Vec::new());
+        };
+        let op = self.begin(Pending::ReadNameSources {
+            device: device.clone(),
+            file,
+            digest,
+        });
+        vec![Effect::ReadNameSources { op, file, mtime }]
+    }
+
+    fn record_verified(
+        &mut self,
+        device: &DeviceId,
+        file: FileId,
+        digest: Sha256,
+        name_sources: Vec<CivilTime>,
     ) -> Vec<Effect> {
         let op = self.begin(Pending::MarkVerified {
             device: device.clone(),
@@ -853,7 +882,11 @@ impl Desktop {
         });
         vec![Effect::Store {
             op,
-            request: StoreRequest::MarkStagingEntryVerified { file, digest },
+            request: StoreRequest::MarkStagingEntryVerified {
+                file,
+                digest,
+                name_sources,
+            },
         }]
     }
 
@@ -917,13 +950,25 @@ impl Desktop {
             return vec![warn(format!("{op:?} completed but was never asked for"))];
         };
         match result {
-            Ok(_) => self.storage_succeeded(pending),
+            Ok(outcome) => self.storage_succeeded(pending, outcome),
             Err(error) => self.storage_failed(pending, &error),
         }
     }
 
-    fn storage_succeeded(&mut self, pending: Pending) -> Vec<Effect> {
+    fn storage_succeeded(&mut self, pending: Pending, outcome: StorageOutcome) -> Vec<Effect> {
         match pending {
+            Pending::ReadNameSources {
+                device,
+                file,
+                digest,
+            } => {
+                let StorageOutcome::NameSources(sources) = outcome else {
+                    return vec![warn(format!(
+                        "storage answered the name sources for {file:?} with something else"
+                    ))];
+                };
+                self.record_verified(&device, file, digest, sources)
+            }
             Pending::CreateFile { .. } | Pending::WriteChunk { .. } => Vec::new(),
             Pending::SyncFile(sync) => self.file_synced(sync),
             Pending::RemoveSuperseded { .. } | Pending::RemoveMismatched { .. } => Vec::new(),
@@ -948,6 +993,19 @@ impl Desktop {
 
     fn storage_failed(&mut self, pending: Pending, error: &StorageError) -> Vec<Effect> {
         match pending {
+            Pending::ReadNameSources {
+                device,
+                file,
+                digest,
+            } => {
+                // A vault name is cosmetic, so a file that cannot say when it was taken is
+                // still worth keeping. Its name falls back to the import time at commit.
+                let mut effects = vec![warn(format!(
+                    "{file:?} would not say when it was taken: {error}"
+                ))];
+                effects.extend(self.record_verified(&device, file, digest, Vec::new()));
+                effects
+            }
             Pending::CreateFile { device, file }
             | Pending::WriteChunk { device, file }
             | Pending::FinalizeFile { device, file, .. } => self.fail_upload(
@@ -1035,6 +1093,7 @@ impl Desktop {
             | Pending::FinalizeFile { .. }
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
+            | Pending::ReadNameSources { .. }
             | Pending::FreeSpace { .. }) => {
                 vec![warn(format!("{other:?} was answered by the store"))]
             }
@@ -1060,6 +1119,7 @@ impl Desktop {
             | Pending::FinalizeFile { .. }
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
+            | Pending::ReadNameSources { .. }
             | Pending::FreeSpace { .. }
             | Pending::SeedFileIds
             | Pending::ListStaging { .. }

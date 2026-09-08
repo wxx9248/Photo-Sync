@@ -42,6 +42,18 @@ pub enum Effect {
         length: u64,
     },
 
+    /// Reads the wall-clock readings a vault name may be built from, in the order
+    /// `SPEC.md` §7.2 lists them. The shell extracts the capture time and localizes both it
+    /// and the modification time handed to it, because converting an instant into a wall
+    /// clock needs a timezone and the core may not read one.
+    ///
+    /// Asked while the file is still in staging, so a commit never re-reads file bytes.
+    ReadNameSources {
+        op: OpId,
+        file: FileId,
+        mtime: Timestamp,
+    },
+
     /// Renames a verified staging file from `<id>.part` to `<id>`. The suffix is what startup
     /// recovery uses to tell a partial apart from a file whose digest already matched, so
     /// stripping it is the moment a transfer stops being resumable and becomes committable.
