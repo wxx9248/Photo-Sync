@@ -7,6 +7,7 @@ pub enum Command {
     Matrix,
     Doctor,
     Scenario { id: String },
+    Mutants { module: Option<String> },
     ProtectedArtifacts { against: String },
     NotYetBuilt { name: String, milestone: String },
 }
@@ -46,7 +47,11 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
         ["verify", "scenario", id] | ["scenario", id] => Ok(Command::Scenario {
             id: (*id).to_string(),
         }),
-        ["verify", name @ ("replay" | "mutants" | "self-test"), ..] => Ok(Command::NotYetBuilt {
+        ["verify", "mutants"] | ["mutants"] => Ok(Command::Mutants { module: None }),
+        ["verify", "mutants", module] | ["mutants", module] => Ok(Command::Mutants {
+            module: Some((*module).to_string()),
+        }),
+        ["verify", name @ ("replay" | "self-test"), ..] => Ok(Command::NotYetBuilt {
             name: (*name).to_string(),
             milestone: "M2".to_string(),
         }),
@@ -65,6 +70,7 @@ pub fn usage() -> String {
         "  matrix                         requirement coverage",
         "  doctor                         whether this machine can run each tier",
         "  scenario <id>                  one acceptance scenario in simulation",
+        "  mutants [module]               does the suite detect a wrong implementation?",
         "  protected-artifacts --against <ref>",
     ]
     .join("\n")

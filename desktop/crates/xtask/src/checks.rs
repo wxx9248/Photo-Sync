@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::cli::Tier;
 use crate::report::{CheckResult, Failure, Report, Requirements};
 use crate::requirements::Registry;
-use crate::{coverage, scenario, spec_check, tools, workspace};
+use crate::{coverage, mutants, scenario, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
 /// failure mode the gate exists to catch.
@@ -57,10 +57,7 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     }
 
     if matches!(tier, Tier::Nightly) {
-        report.add(CheckResult::skipped(
-            "mutation",
-            "cargo-mutants is not installed on this machine",
-        ));
+        report.add(mutation(root)?);
     }
 
     report.finish(&workspace::reports_directory(root))?;
@@ -118,6 +115,24 @@ fn unit_tests(desktop: &Path) -> Result<CheckResult, String> {
         "tests",
         passed,
         "unit tests failed",
+    ))
+}
+
+/// Whether the suite still detects a wrong core. `AGENTS.md` asks for this on the modules a
+/// change touched; the nightly tier asks it of all of them.
+fn mutation(root: &Path) -> Result<CheckResult, String> {
+    if !tools::cargo_subcommand_available("mutants") {
+        return Ok(CheckResult::skipped(
+            "mutation",
+            "cargo-mutants is not installed, run `cargo install cargo-mutants`",
+        ));
+    }
+
+    let passed = mutants::run(root, None)?;
+    Ok(CheckResult::from_outcome(
+        "mutation",
+        passed,
+        "the suite did not detect enough wrong implementations",
     ))
 }
 

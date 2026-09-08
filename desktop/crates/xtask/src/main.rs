@@ -7,6 +7,7 @@ mod checks;
 mod cli;
 mod coverage;
 mod doctor;
+mod mutants;
 mod report;
 mod requirements;
 mod scenario;
@@ -48,6 +49,7 @@ fn run(command: Command) -> Result<bool, String> {
         Command::SpecCheck => spec_check::run(&root).map(|outcome| outcome.passed()),
         Command::Matrix => coverage::print_matrix(&root),
         Command::Doctor => doctor::run(&root),
+        Command::Mutants { module } => mutants::run(&root, module.as_deref()),
         Command::Scenario { id } => {
             let outcome = scenario::run_one(&workspace::scenarios_directory(&root), &id)?;
             report_scenario(&outcome);
