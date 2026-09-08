@@ -83,7 +83,7 @@ quote = "**Free-space check** against the diff's **to-send byte total**"
 id = "R-XFER-001"
 section = "§6.4"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "Each file is streamed with its sha256 (computed on the fly)"
 
 [[requirement]]
@@ -218,7 +218,7 @@ quote = "Terminal fallback: the import time (desktop clock at commit)."
 id = "R-COMMIT-001"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "Commits are **serialized across devices**"
 
 [[requirement]]
@@ -486,7 +486,7 @@ quote = "A second live connection claiming an already-connected device ID supers
 id = "R-PAIR-001"
 section = "§5.2"
 area = "PAIR"
-status = "deferred"
+status = "active"
 quote = "First connection displays a short code on the desktop screen"
 
 [[requirement]]

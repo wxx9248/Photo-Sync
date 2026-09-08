@@ -15,7 +15,7 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 is complete. The work in progress is **M1**.
+M0 and M1 are complete. The work in progress is **M2**.
 
 ### M0 Foundation
 
