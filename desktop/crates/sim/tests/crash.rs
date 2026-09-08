@@ -118,6 +118,7 @@ fn a_partial_is_cut_back_to_its_watermark_when_the_machine_returns() {
     });
 
     sim.restart();
+    agreed(&sim);
 
     // The file survived, cut back to the bytes a sync had proven. A crash can leave a file
     // longer than that, and the tail past it is whatever the disk happened to hold.
@@ -141,6 +142,7 @@ fn a_photo_that_reached_the_vault_is_still_there_afterwards() {
     let name = only_name(&sim);
 
     sim.restart();
+    agreed(&sim);
 
     // SPEC.md §7.3 syncs both directories before it writes a done-mark, so a committed photo
     // survives a power loss the instant its commit says it did.
@@ -172,6 +174,7 @@ fn staging_is_emptied_durably_when_the_commit_finishes() {
 
     sim.deliver(Event::FinishRequested { device: phone() });
     sim.restart();
+    agreed(&sim);
 
     assert!(!sim.storage.holds(file));
     assert!(sim.storage.durable_staging().is_empty());
@@ -195,6 +198,7 @@ fn a_photo_the_desktop_never_finished_taking_is_asked_for_again() {
         data: PHOTO[..10].to_vec(),
     });
     sim.restart();
+    agreed(&sim);
 
     // The desktop cannot continue a digest it no longer holds, so it starts the file again
     // rather than trusting a prefix it cannot check. SPEC.md §7.6 allows exactly that.
@@ -217,6 +221,7 @@ fn a_whole_session_survives_a_restart_between_sessions() {
     let before: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
 
     sim.restart();
+    agreed(&sim);
 
     let after: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
     assert_eq!(before, after);
@@ -286,6 +291,7 @@ fn a_partial_longer_than_its_watermark_is_cut_back_to_it() {
     });
 
     sim.restart();
+    agreed(&sim);
 
     // The file came back longer than anything a sync had proven, with a tail that is not the
     // photograph. Recovery cuts it back to the watermark rather than to the length.
@@ -305,6 +311,7 @@ fn a_verified_leftover_is_left_alone_when_the_machine_returns() {
 
     // Verified but not committed: the phone never sent the finish signal.
     sim.restart();
+    agreed(&sim);
 
     let cut_back = sim.log().iter().any(|effect| {
         matches!(effect, photo_sync_core::Effect::TruncateFile { file: cut, .. } if *cut == file)
@@ -347,6 +354,7 @@ fn a_commit_that_never_moved_a_file_is_finished_afterwards() {
     // The plan was sealed and nothing had happened yet.
     assert!(sim.storage.vault().is_empty());
     sim.restart();
+    agreed(&sim);
 
     assert_eq!(sim.storage.vault().len(), 1);
     assert_eq!(sim.store.device_files().len(), 1);
@@ -365,6 +373,7 @@ fn a_commit_that_moved_the_file_but_never_said_so_is_not_undone() {
     let before: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
     assert_eq!(before.len(), 1);
     sim.restart();
+    agreed(&sim);
 
     // The sealed map reserved that name, so the file already sitting there is this desktop's
     // own completed rename rather than a reason to write a second copy.
@@ -380,6 +389,7 @@ fn a_replayed_commit_records_the_photo_it_committed() {
     let mut sim = desktop();
     commit_until(&mut sim, is_rename);
     sim.restart();
+    agreed(&sim);
 
     let rows = sim.store.device_files();
     assert_eq!(rows.len(), 1);
@@ -397,6 +407,7 @@ fn a_desktop_with_no_write_log_replays_nothing() {
 
     // Verified, staged, and no commit was ever asked for.
     sim.restart();
+    agreed(&sim);
 
     assert!(sim.storage.vault().is_empty());
     assert!(sim.store.device_files().is_empty());
@@ -409,6 +420,7 @@ fn a_replayed_commit_still_lets_the_phone_finish_next_time() {
     let mut sim = desktop();
     commit_until(&mut sim, is_rename);
     sim.restart();
+    agreed(&sim);
 
     // The device was locked while its commit was in flight; once replayed it is free.
     let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
@@ -419,4 +431,14 @@ fn a_replayed_commit_still_lets_the_phone_finish_next_time() {
 
     assert_eq!(sim.storage.vault().len(), 2);
     assert_eq!(outcome.uploaded.len(), 1);
+}
+
+/// Asks the desktop and the model whether they agree about what survived.
+fn agreed(sim: &Simulation) {
+    if let Err(differences) = sim.agree() {
+        panic!(
+            "the desktop and the model disagree: {}",
+            differences.join("; ")
+        );
+    }
 }

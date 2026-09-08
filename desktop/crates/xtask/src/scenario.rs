@@ -407,10 +407,12 @@ fn in_simulation(scenario: &Scenario, mut world: World) -> Result<Observed, Trou
         sim.storage.set_capture_time(content, *captured);
     }
     for row in &world.imported {
-        sim.store.remember_import(row.clone());
-    }
-    for (name, bytes) in &world.vault {
-        sim.storage.put_in_vault(name, bytes.clone());
+        let copy = world
+            .vault
+            .iter()
+            .find(|(name, _)| *name == row.vault_name)
+            .map(|(_, bytes)| bytes.as_slice());
+        sim.remember_import(row.clone(), copy);
     }
 
     sim.start();
@@ -424,6 +426,16 @@ fn in_simulation(scenario: &Scenario, mut world: World) -> Result<Observed, Trou
         .keys()
         .map(ToString::to_string)
         .collect();
+
+    // The model watched the same session and worked out what must be true. A scenario says
+    // what a person expected; this says what follows from the rules whether anyone wrote it
+    // down or not.
+    if let Err(differences) = sim.agree() {
+        return Err(Trouble::Failed(format!(
+            "the desktop and the model disagree: {}",
+            differences.join("; ")
+        )));
+    }
     Ok(observed)
 }
 

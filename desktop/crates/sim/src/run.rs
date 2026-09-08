@@ -11,11 +11,15 @@ use photo_sync_core::effect::Effect;
 use photo_sync_core::event::{Event, StorageOutcome};
 use photo_sync_core::id::DeviceId;
 use photo_sync_core::port::StorageError;
-use photo_sync_core::store::{StagingEntry, StoreError, StoreRequest};
+use photo_sync_core::store::{DeviceFileRow, StagingEntry, StoreError, StoreRequest};
 use photo_sync_core::{Desktop, Moment};
 
 use crate::storage::Storage;
 use crate::store::Store;
+use photo_sync_core::RunningDigest;
+use photo_sync_core::id::{DevicePath, Sha256};
+use photo_sync_model::{Model, Recorded};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Ways storage can refuse. Each one stands for a condition `SPEC.md` names: a full disk, a
 /// vault the desktop cannot read, a shell whose threads finish in their own order.
@@ -37,6 +41,11 @@ pub struct Faults {
 /// accessors over each of them would say nothing their names do not.
 pub struct Simulation {
     pub desktop: Desktop,
+
+    /// An account of what the desktop should be holding, kept beside it and told the same
+    /// story. Nothing consults it until something asks the two to agree.
+    pub model: Model,
+
     pub storage: Storage,
     pub store: Store,
     pub faults: Faults,
@@ -55,6 +64,7 @@ impl Simulation {
     pub fn new(now: Moment) -> Self {
         Self {
             desktop: Desktop::new(),
+            model: Model::new(),
             storage: Storage::new(),
             store: Store::new(),
             faults: Faults::default(),
@@ -87,8 +97,93 @@ impl Simulation {
         self.start();
     }
 
+    /// Asks the desktop and the model whether they agree, and says how they differ if not.
+    ///
+    /// `docs/VERIFICATION.md` §L2 asks this after every commit, every recovery, and at the
+    /// end of a session. A difference is reported as a difference in state, which is
+    /// something to act on, rather than as an assertion that failed.
+    ///
+    /// # Errors
+    /// Lists every way the two accounts disagree.
+    pub fn agree(&self) -> Result<(), Vec<String>> {
+        let expected = self.model.expected();
+        let mut differences = Vec::new();
+
+        let held: BTreeSet<Sha256> = self
+            .storage
+            .vault()
+            .values()
+            .map(|bytes| digest(bytes))
+            .collect();
+        compare("the vault holds", &expected.vault, &held, &mut differences);
+
+        let known: BTreeSet<Sha256> = self.store.content().keys().copied().collect();
+        compare(
+            "the index knows",
+            &expected.content,
+            &known,
+            &mut differences,
+        );
+
+        let recorded: BTreeMap<(DeviceId, DevicePath), Recorded> = self
+            .store
+            .device_files()
+            .into_iter()
+            .map(|row| {
+                (
+                    (row.device.clone(), row.path.clone()),
+                    Recorded {
+                        digest: row.digest,
+                        size: row.size,
+                        mtime: row.mtime,
+                    },
+                )
+            })
+            .collect();
+        for (key, expected_row) in &expected.device_files {
+            match recorded.get(key) {
+                Some(found) if found == expected_row => {}
+                Some(found) => differences.push(format!(
+                    "{} on {} was recorded as {found:?}, expected {expected_row:?}",
+                    key.1, key.0
+                )),
+                None => differences.push(format!(
+                    "{} on {} has no row, expected {expected_row:?}",
+                    key.1, key.0
+                )),
+            }
+        }
+        for key in recorded.keys() {
+            if !expected.device_files.contains_key(key) {
+                differences.push(format!("{} on {} has a row nothing earned", key.1, key.0));
+            }
+        }
+
+        if differences.is_empty() {
+            Ok(())
+        } else {
+            Err(differences)
+        }
+    }
+
+    /// Records a photograph an earlier session imported, in every account of the world at
+    /// once: the index, the vault if its copy is still there, and the model.
+    ///
+    /// Seeding them separately is how they drift, and a model told a different history than
+    /// the desktop reports differences that are the test's fault rather than the code's.
+    pub fn remember_import(&mut self, row: DeviceFileRow, vault_copy: Option<&[u8]>) {
+        self.model
+            .remember_import(&row.device, &row.path, row.digest, row.size, row.mtime);
+        if let Some(bytes) = vault_copy {
+            self.model.remember_vault_copy(row.digest);
+            self.storage.put_in_vault(&row.vault_name, bytes.to_vec());
+        }
+        self.store.remember_import(row);
+    }
+
     /// Delivers one event and performs everything it leads to.
     pub fn deliver(&mut self, event: Event) {
+        self.model.observe(&event);
         let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
         let mut held: VecDeque<Event> = VecDeque::new();
         loop {
@@ -133,6 +228,7 @@ impl Simulation {
     /// happened, and everything queued behind it never having been asked for, which is what a
     /// power loss looks like from the outside.
     pub fn deliver_until(&mut self, event: Event, stop: fn(&Effect) -> bool) {
+        self.model.observe(&event);
         let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
         while let Some(effect) = queue.pop_front() {
             if stop(&effect) {
@@ -149,6 +245,7 @@ impl Simulation {
     /// Delivers one event and answers none of it. Used where the property is that something
     /// has *not* happened yet.
     pub fn step(&mut self, event: Event) -> Vec<Effect> {
+        self.model.observe(&event);
         let effects = self.desktop.handle(event);
         self.log.extend(effects.iter().cloned());
         effects
@@ -304,5 +401,26 @@ impl crate::phone::Driver for Simulation {
 
     fn take_log(&mut self) -> Vec<Effect> {
         Simulation::take_log(self)
+    }
+}
+
+fn digest(bytes: &[u8]) -> Sha256 {
+    let mut running = RunningDigest::new();
+    running.update(bytes);
+    running.peek()
+}
+
+/// Says what one side has that the other does not, rather than that they differ.
+fn compare(
+    what: &str,
+    expected: &BTreeSet<Sha256>,
+    found: &BTreeSet<Sha256>,
+    into: &mut Vec<String>,
+) {
+    for missing in expected.difference(found) {
+        into.push(format!("{what} nothing for {missing:?}, which it should"));
+    }
+    for extra in found.difference(expected) {
+        into.push(format!("{what} {extra:?}, which nothing earned"));
     }
 }
