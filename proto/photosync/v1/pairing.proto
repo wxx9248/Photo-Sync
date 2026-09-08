@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package photosync.v1;
+
+// Pairing runs only while the desktop has pairing mode open. Outside that window the desktop
+// accepts pinned peers only. See SPEC.md section 5.2.
+service Pairing {
+  // Blocks until the person at the desktop accepts or rejects. Both ends compute the short
+  // code locally from the two public keys, so no code travels over this connection.
+  rpc Pair(PairRequest) returns (PairResponse);
+}
+
+message PairRequest {
+  uint32 protocol_version = 1;
+  string device_id = 2;
+  string device_name = 3;
+}
+
+message PairResponse {
+  bool accepted = 1;
+  string desktop_name = 2;
+}

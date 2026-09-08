@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package photosync.v1;
+
+// The transfer protocol. The phone drives every exchange; the desktop only answers.
+//
+// There is no session identifier anywhere in this file. A connection is identified by the
+// pinned TLS peer key, and the desktop derives the device from it. See SPEC.md section 6.
+service PhotoSync {
+  // First call on every connection, including a reconnection.
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+
+  // The frozen catalog, chunked so no single message grows unbounded.
+  rpc SubmitCatalog(stream CatalogChunk) returns (CatalogAck);
+
+  // The classification of that catalog, chunked for the same reason.
+  rpc GetDiff(DiffRequest) returns (stream DiffChunk);
+
+  // One file. A header, then the bytes from the resume offset, then the digest.
+  rpc UploadFile(stream FileChunk) returns (UploadResult);
+
+  // Commit, then the deletion candidates derived from this session's catalog.
+  rpc Finish(FinishRequest) returns (stream FinishChunk);
+
+  // What the phone actually deleted, and what it kept.
+  rpc ReportDeletions(stream DeletionReport) returns (SessionSummary);
+}
+
+message HandshakeRequest {
+  uint32 protocol_version = 1;
+  string device_id = 2;
+  string device_name = 3;
+}
+
+message HandshakeResponse {
+  uint32 protocol_version = 1;
+  string desktop_name = 2;
+
+  // True while a previous commit for this device is still running. The phone waits and shows
+  // the status rather than starting a transfer that could not join the batch.
+  bool commit_in_progress = 3;
+}
+
+// A file as the phone sees it. The identity of an entry is the three fields together.
+message CatalogEntry {
+  // MediaStore RELATIVE_PATH joined with DISPLAY_NAME.
+  string path = 1;
+  uint64 size = 2;
+
+  // MediaStore DATE_MODIFIED. Whole seconds since the epoch on both ends.
+  int64 mtime = 3;
+}
+
+message CatalogChunk {
+  repeated CatalogEntry entries = 1;
+
+  // Set on the final chunk. The desktop starts the diff when it arrives.
+  bool last = 2;
+
+  // Sum over the whole catalog, sent with the final chunk.
+  uint64 total_bytes = 3;
+}
+
+message CatalogAck {
+  uint64 entries_received = 1;
+}
+
+message DiffRequest {}
+
+// One file the desktop wants.
+message ToSend {
+  string path = 1;
+
+  // Name the desktop assigned to this transfer in its staging manifest. The phone echoes it
+  // back in the upload header so a re-transfer can never be confused with an older attempt.
+  string file_id = 2;
+
+  // First byte the desktop still needs. Zero for a file it holds nothing of. This is the
+  // desktop's durable watermark, never a count the phone kept.
+  uint64 resume_offset = 3;
+}
+
+message DiffSummary {
+  uint64 to_send_count = 1;
+  uint64 to_send_bytes = 2;
+  uint64 already_imported = 3;
+  uint64 already_staged = 4;
+}
+
+message DiffChunk {
+  repeated ToSend to_send = 1;
+  bool last = 2;
+
+  // Present on the final chunk.
+  DiffSummary summary = 3;
+}
+
+message FileHeader {
+  string file_id = 1;
+  string path = 2;
+  uint64 size = 3;
+  int64 mtime = 4;
+
+  // First byte carried by this stream. Must equal the resume offset from the diff.
+  uint64 offset = 5;
+}
+
+// The digest covers the whole file, not only the bytes on the wire. The phone reads the
+// skipped prefix locally to compute it, so a resumed transfer is verified end to end.
+message FileTrailer {
+  bytes sha256 = 1;
+}
+
+message FileChunk {
+  oneof kind {
+    FileHeader header = 1;
+    bytes data = 2;
+    FileTrailer trailer = 3;
+  }
+}
+
+message UploadResult {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    VERIFIED = 1;
+    HASH_MISMATCH = 2;
+    CHANGED_ON_PHONE = 3;
+    WRITE_FAILED = 4;
+  }
+  Status status = 1;
+
+  // How much of this file the desktop has made durable. On failure the phone uses nothing from
+  // this field; the next diff carries the authoritative offset.
+  uint64 durable_bytes = 2;
+}
+
+message FinishRequest {}
+
+message DeletionCandidate {
+  string path = 1;
+  uint64 size = 2;
+  int64 mtime = 3;
+  bytes expected_sha256 = 4;
+
+  enum Origin {
+    ORIGIN_UNSPECIFIED = 0;
+
+    // Committed by this session's batch. The phone checks size and mtime only.
+    THIS_TRANSFER = 1;
+
+    // Matched against an index row from an earlier session. The phone re-hashes the file.
+    EARLIER = 2;
+  }
+  Origin origin = 5;
+}
+
+message FinishChunk {
+  repeated DeletionCandidate candidates = 1;
+  bool last = 2;
+
+  // Present on the final chunk.
+  CommitSummary commit = 3;
+}
+
+message CommitSummary {
+  uint64 imported = 1;
+  uint64 duplicates = 2;
+  uint64 bytes_committed = 3;
+}
+
+message DeletionOutcome {
+  string path = 1;
+
+  enum Result {
+    RESULT_UNSPECIFIED = 0;
+    DELETED = 1;
+
+    // The file no longer matches what the desktop verified, so the phone kept it.
+    KEPT_CHANGED = 2;
+
+    // The user declined, or the platform delete request was not granted.
+    KEPT_USER = 3;
+    FAILED = 4;
+  }
+  Result result = 2;
+}
+
+message DeletionReport {
+  repeated DeletionOutcome outcomes = 1;
+  bool last = 2;
+}
+
+message SessionSummary {
+  uint64 sent = 1;
+  uint64 skipped = 2;
+  uint64 failed = 3;
+  uint64 deleted = 4;
+  uint64 kept = 5;
+  uint64 bytes_freed = 6;
+}
+
+// Attached as an error detail when the desktop refuses a transfer for lack of space.
+message SpaceShortfall {
+  uint64 required_bytes = 1;
+  uint64 available_bytes = 2;
+}
