@@ -1,0 +1,24 @@
+id          = "S-DIFF-001"
+covers      = ["R-DIFF-005"]
+description = "A desktop without room for the transfer turns the session away before anything moves"
+
+[[phone.library]]
+path          = "DCIM/Camera/IMG_0001.jpg"
+size          = 2400
+mtime         = 1756000000
+content       = "alpha"
+exif_datetime = "2026-08-01 12:34:56"
+
+[desktop]
+free_space = 2399
+
+[[events]]
+kind = "run_session"
+
+[expect]
+rejected            = true
+uploaded            = []
+vault               = []
+deletion_candidates = []
+phone_deleted       = []
+phone_kept          = []

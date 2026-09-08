@@ -1,0 +1,20 @@
+id          = "S-XFER-001"
+covers      = ["R-XFER-001", "R-COMMIT-001", "R-STAGE-003", "R-DELETE-002"]
+description = "One new photo is streamed, committed to the vault, and freed from the phone"
+
+[[phone.library]]
+path          = "DCIM/Camera/IMG_0001.jpg"
+size          = 2400
+mtime         = 1756000000
+content       = "alpha"
+exif_datetime = "2026-08-01 12:34:56"
+
+[[events]]
+kind = "run_session"
+
+[expect]
+uploaded            = ["DCIM/Camera/IMG_0001.jpg"]
+vault               = ["2026-08-01_123456.jpg"]
+deletion_candidates = ["DCIM/Camera/IMG_0001.jpg"]
+phone_deleted       = ["DCIM/Camera/IMG_0001.jpg"]
+phone_kept          = []

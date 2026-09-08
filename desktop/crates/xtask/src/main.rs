@@ -9,6 +9,7 @@ mod coverage;
 mod doctor;
 mod report;
 mod requirements;
+mod scenario;
 mod spec_check;
 mod tools;
 mod workspace;
@@ -47,9 +48,22 @@ fn run(command: Command) -> Result<bool, String> {
         Command::SpecCheck => spec_check::run(&root).map(|outcome| outcome.passed()),
         Command::Matrix => coverage::print_matrix(&root),
         Command::Doctor => doctor::run(&root),
+        Command::Scenario { id } => {
+            let outcome = scenario::run_one(&workspace::scenarios_directory(&root), &id)?;
+            report_scenario(&outcome);
+            Ok(outcome.passed())
+        }
         Command::ProtectedArtifacts { against } => checks::protected_artifacts(&root, &against),
         Command::NotYetBuilt { name, milestone } => Err(format!(
             "`{name}` arrives in milestone {milestone}. See docs/ROADMAP.md."
         )),
     }
+}
+
+fn report_scenario(outcome: &scenario::Outcome) {
+    if outcome.passed() {
+        println!("{}: passed — {}", outcome.id, outcome.description);
+        return;
+    }
+    scenario::print_failure(outcome);
 }

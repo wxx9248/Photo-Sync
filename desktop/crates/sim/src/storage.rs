@@ -31,8 +31,9 @@ pub struct Storage {
     staging: BTreeMap<FileId, StagedFile>,
     vault: BTreeMap<VaultName, Vec<u8>>,
 
-    /// What the shell would read out of each staged file as its capture time.
-    name_sources: BTreeMap<FileId, Vec<CivilTime>>,
+    /// What the shell would read out of a file with these contents. Keyed by the bytes,
+    /// because a capture time is a property of the photograph and not of where it is kept.
+    name_sources: BTreeMap<Vec<u8>, Vec<CivilTime>>,
 
     /// What it reads out of a file nothing was said about. A real shell finds a capture time
     /// in most photographs, so answering nothing by default would make the common case the
@@ -117,17 +118,20 @@ impl Storage {
 
     #[must_use]
     pub fn name_sources(&self, file: FileId) -> Vec<CivilTime> {
+        let Some(staged) = self.staging.get(&file) else {
+            return Vec::new();
+        };
         self.name_sources
-            .get(&file)
+            .get(&staged.bytes)
             .cloned()
             .unwrap_or_else(|| self.default_name_sources.clone())
     }
 
     // ---- what a test says and asks -----------------------------------------------------
 
-    /// Says what the shell would read out of a file as its capture time.
-    pub fn set_name_sources(&mut self, file: FileId, sources: Vec<CivilTime>) {
-        self.name_sources.insert(file, sources);
+    /// Says what the shell would read out of a photograph with these contents.
+    pub fn set_capture_time(&mut self, content: &[u8], captured: CivilTime) {
+        self.name_sources.insert(content.to_vec(), vec![captured]);
     }
 
     /// Says what it reads out of every file nothing was said about.

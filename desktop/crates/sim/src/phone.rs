@@ -52,6 +52,10 @@ impl PhoneFile {
 #[derive(Clone, Debug, Default)]
 pub struct SessionOutcome {
     pub summary: Option<SessionSummary>,
+
+    /// Files this session streamed, whole or resumed.
+    pub uploaded: Vec<DevicePath>,
+
     pub offered: Vec<DeletionCandidate>,
     pub deleted: Vec<DevicePath>,
     pub kept: Vec<DevicePath>,
@@ -124,6 +128,7 @@ impl Phone {
         }
         for wanted in to_send(&answered) {
             self.upload(sim, &wanted);
+            outcome.uploaded.push(wanted.path.clone());
             sim.take_log();
         }
 

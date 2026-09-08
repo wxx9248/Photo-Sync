@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::cli::Tier;
 use crate::report::{CheckResult, Report};
-use crate::{coverage, spec_check, tools, workspace};
+use crate::{coverage, scenario, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
 /// failure mode the gate exists to catch.
@@ -39,6 +39,7 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.add(formatting(&desktop)?);
     report.add(lints(&desktop)?);
     report.add(unit_tests(&desktop)?);
+    report.add(scenarios(root)?);
     report.add(specification(root)?);
     report.add(requirement_matrix(root)?);
 
@@ -111,6 +112,31 @@ fn unit_tests(desktop: &Path) -> Result<CheckResult, String> {
         "tests",
         passed,
         "unit tests failed",
+    ))
+}
+
+fn scenarios(root: &Path) -> Result<CheckResult, String> {
+    let outcomes = scenario::run_all(&workspace::scenarios_directory(root))?;
+    if outcomes.is_empty() {
+        return Ok(CheckResult::skipped(
+            "scenarios",
+            "none are written yet, see docs/VERIFICATION.md",
+        ));
+    }
+
+    let failed: Vec<&scenario::Outcome> = outcomes
+        .iter()
+        .filter(|outcome| !outcome.passed())
+        .collect();
+    for outcome in &failed {
+        scenario::print_failure(outcome);
+    }
+
+    println!("scenarios: {} run, {} failed", outcomes.len(), failed.len());
+    Ok(CheckResult::from_outcome(
+        "scenarios",
+        failed.is_empty(),
+        "an acceptance scenario did not hold",
     ))
 }
 

@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+photo-sync-core.workspace = true
+photo-sync-sim.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
