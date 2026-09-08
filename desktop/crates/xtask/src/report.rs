@@ -163,8 +163,7 @@ impl Report {
     }
 }
 
-// The report records when a run happened, which is the one place wall-clock time belongs.
-#[allow(clippy::disallowed_types)]
+/// The report records when a run happened. The runner is not the core, so it may ask.
 fn seconds_since_epoch() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
