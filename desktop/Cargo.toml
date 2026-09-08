@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/model",
+    "crates/sim",
+    "crates/protocol",
+    "crates/shell",
+    "crates/xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+rust-version = "1.98"
+
+[workspace.dependencies]
+photo-sync-core = { path = "crates/core" }
+photo-sync-model = { path = "crates/model" }
+photo-sync-protocol = { path = "crates/protocol" }
+photo-sync-sim = { path = "crates/sim" }
+
+prost = "0.14.4"
+prost-build = "0.14.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+toml = "1.1.5"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+todo = "warn"
+unwrap_used = "warn"

@@ -1,0 +1,10 @@
+# The core crate must not reach for the platform. See docs/STACK.md section 3.3.
+disallowed-types = [
+    { path = "std::time::SystemTime", reason = "take the time from the Clock port" },
+    { path = "std::time::Instant", reason = "take the time from the Clock port" },
+]
+
+disallowed-methods = [
+    { path = "std::fs::rename", reason = "emit an Effect and let the shell perform it" },
+    { path = "std::fs::remove_file", reason = "emit an Effect and let the shell perform it" },
+]

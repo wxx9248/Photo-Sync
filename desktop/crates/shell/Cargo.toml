@@ -1,0 +1,13 @@
+[package]
+name = "photo-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+photo-sync-core.workspace = true
+photo-sync-protocol.workspace = true
+
+[lints]
+workspace = true
