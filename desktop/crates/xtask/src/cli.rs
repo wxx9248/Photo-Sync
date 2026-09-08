@@ -6,7 +6,7 @@ pub enum Command {
     SpecCheck,
     Matrix,
     Doctor,
-    Scenario { id: String },
+    Scenario { id: String, real: bool },
     Mutants { module: Option<String> },
     ProtectedArtifacts { against: String },
     NotYetBuilt { name: String, milestone: String },
@@ -46,7 +46,14 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
         }),
         ["verify", "scenario", id] | ["scenario", id] => Ok(Command::Scenario {
             id: (*id).to_string(),
+            real: false,
         }),
+        ["verify", "scenario", id, "--real"] | ["scenario", id, "--real"] => {
+            Ok(Command::Scenario {
+                id: (*id).to_string(),
+                real: true,
+            })
+        }
         ["verify", "mutants"] | ["mutants"] => Ok(Command::Mutants { module: None }),
         ["verify", "mutants", module] | ["mutants", module] => Ok(Command::Mutants {
             module: Some((*module).to_string()),
@@ -69,7 +76,7 @@ pub fn usage() -> String {
         "  spec-check                     registry quotes still match SPEC.md",
         "  matrix                         requirement coverage",
         "  doctor                         whether this machine can run each tier",
-        "  scenario <id>                  one acceptance scenario in simulation",
+        "  scenario <id> [--real]         one acceptance scenario, simulated or on the real stack",
         "  mutants [module]               does the suite detect a wrong implementation?",
         "  protected-artifacts --against <ref>",
     ]

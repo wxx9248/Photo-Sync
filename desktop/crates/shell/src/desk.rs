@@ -94,11 +94,14 @@ impl Desk {
                 *op,
                 self.storage.finalize_staging_file(*file),
             )),
-            Effect::ReadNameSources { op, .. } => Some(Event::StorageOpCompleted {
+            Effect::ReadNameSources { op, mtime, .. } => Some(Event::StorageOpCompleted {
                 op: *op,
-                // Reading a capture time out of a photograph needs nom-exif and a timezone,
-                // neither of which is built. A name falls back to the import time until then.
-                result: Ok(StorageOutcome::NameSources(Vec::new())),
+                // The capture time of SPEC.md §7.2's first two sources needs nom-exif, which
+                // is not built, so the modification time is the first reading offered. It is
+                // read in UTC until a timezone database arrives with the extraction.
+                result: Ok(StorageOutcome::NameSources(vec![clock::civil_from_unix(
+                    mtime.0,
+                )])),
             }),
             Effect::RenameIntoVault { op, file, name } => Some(storage_result(
                 *op,

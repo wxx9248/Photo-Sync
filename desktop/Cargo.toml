@@ -22,6 +22,7 @@ photo-sync-core = { path = "crates/core" }
 photo-sync-model = { path = "crates/model" }
 photo-sync-protocol = { path = "crates/protocol" }
 photo-sync-sim = { path = "crates/sim" }
+photo-sync-testclient = { path = "crates/testclient" }
 
 prost = "0.14.4"
 prost-build = "0.14.4"

@@ -50,8 +50,13 @@ fn run(command: Command) -> Result<bool, String> {
         Command::Matrix => coverage::print_matrix(&root),
         Command::Doctor => doctor::run(&root),
         Command::Mutants { module } => mutants::run(&root, module.as_deref()),
-        Command::Scenario { id } => {
-            let outcome = scenario::run_one(&workspace::scenarios_directory(&root), &id)?;
+        Command::Scenario { id, real } => {
+            let against = if real {
+                scenario::Against::RealStack
+            } else {
+                scenario::Against::Simulation
+            };
+            let outcome = scenario::run_one(&workspace::scenarios_directory(&root), &id, against)?;
             report_scenario(&outcome);
             Ok(outcome.passed())
         }

@@ -7,6 +7,8 @@
 //!
 //! [`Phone`]: photo_sync_sim::Phone
 
+pub mod real;
+
 use std::net::SocketAddr;
 
 use photo_sync::identity::Identity;

@@ -7,7 +7,6 @@ path          = "DCIM/Camera/IMG_0001.jpg"
 size          = 2400
 mtime         = 1756000000
 content       = "alpha"
-exif_datetime = "2026-08-01 12:34:56"
 
 [[desktop.index.device_file]]
 device_path = "DCIM/Camera/IMG_0001.jpg"

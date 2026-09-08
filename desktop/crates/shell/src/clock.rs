@@ -8,8 +8,8 @@
 //! Until both land, a vault name falling back to the import time reads in UTC rather than in
 //! local time, which is a cosmetic difference in a field §7.2 already calls cosmetic.
 
+use photo_sync_core::Moment;
 use photo_sync_core::id::Timestamp;
-use photo_sync_core::{CivilTime, Moment};
 
 /// Reads the machine clock.
 #[must_use]
@@ -25,43 +25,12 @@ pub fn now() -> Moment {
     }
 }
 
-/// Turns seconds since the epoch into a wall-clock reading in UTC.
-///
-/// The civil-from-days arithmetic is Howard Hinnant's, which is exact for every day the type
-/// can hold and needs no table.
-#[must_use]
-pub fn civil_from_unix(seconds: i64) -> CivilTime {
-    let days = seconds.div_euclid(86_400);
-    let rest = seconds.rem_euclid(86_400);
-
-    let shifted = days + 719_468;
-    let era = shifted.div_euclid(146_097);
-    let day_of_era = shifted.rem_euclid(146_097);
-    let year_of_era =
-        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let year = year_of_era + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let shifted_month = (5 * day_of_year + 2) / 153;
-    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
-    let month = if shifted_month < 10 {
-        shifted_month + 3
-    } else {
-        shifted_month - 9
-    };
-
-    CivilTime {
-        year: i32::try_from(year + i64::from(month <= 2)).unwrap_or(0),
-        month: u8::try_from(month).unwrap_or(1),
-        day: u8::try_from(day).unwrap_or(1),
-        hour: u8::try_from(rest / 3_600).unwrap_or(0),
-        minute: u8::try_from((rest % 3_600) / 60).unwrap_or(0),
-        second: u8::try_from(rest % 60).unwrap_or(0),
-    }
-}
+pub use photo_sync_core::naming::civil_from_unix;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use photo_sync_core::CivilTime;
 
     fn at(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> CivilTime {
         CivilTime {

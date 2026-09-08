@@ -162,14 +162,14 @@ impl Simulation {
                 self.storage.finalize(*file);
                 Some(done(*op))
             }
-            Effect::ReadNameSources { op, file, .. } => {
+            Effect::ReadNameSources { op, file, mtime } => {
                 if self.faults.refuse_name_sources {
                     return Some(failed(*op, StorageError::Failed("unreadable".into())));
                 }
                 Some(Event::StorageOpCompleted {
                     op: *op,
                     result: Ok(StorageOutcome::NameSources(
-                        self.storage.name_sources(*file),
+                        self.storage.name_sources(*file, *mtime),
                     )),
                 })
             }

@@ -7,14 +7,13 @@ path          = "DCIM/Camera/IMG_0001.jpg"
 size          = 2400
 mtime         = 1756000000
 content       = "alpha"
-exif_datetime = "2026-08-01 12:34:56"
 
 [[events]]
 kind = "run_session"
 
 [expect]
 uploaded            = ["DCIM/Camera/IMG_0001.jpg"]
-vault               = ["2026-08-01_123456.jpg"]
+vault               = ["2025-08-24_014640.jpg"]
 deletion_candidates = ["DCIM/Camera/IMG_0001.jpg"]
 phone_deleted       = ["DCIM/Camera/IMG_0001.jpg"]
 phone_kept          = []

@@ -41,9 +41,16 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.add(formatting(&desktop)?);
     report.add(lints(&desktop)?);
     report.add(unit_tests(&desktop)?);
-    let (check, failures) = scenarios(root)?;
+    let (check, failures) = scenarios(root, scenario::Against::Simulation, "scenarios")?;
     report.add(check);
     report.blame(failures);
+
+    if matches!(tier, Tier::Full | Tier::Nightly) {
+        let (check, failures) =
+            scenarios(root, scenario::Against::RealStack, "scenarios (real stack)")?;
+        report.add(check);
+        report.blame(failures);
+    }
 
     report.add(specification(root)?);
     report.add(requirement_matrix(root)?);
@@ -136,29 +143,45 @@ fn mutation(root: &Path) -> Result<CheckResult, String> {
     ))
 }
 
-fn scenarios(root: &Path) -> Result<(CheckResult, Vec<Failure>), String> {
-    let outcomes = scenario::run_all(&workspace::scenarios_directory(root))?;
+fn scenarios(
+    root: &Path,
+    against: scenario::Against,
+    name: &str,
+) -> Result<(CheckResult, Vec<Failure>), String> {
+    let outcomes = scenario::run_all(&workspace::scenarios_directory(root), against)?;
     if outcomes.is_empty() {
         return Ok((
-            CheckResult::skipped(
-                "scenarios",
-                "none are written yet, see docs/VERIFICATION.md",
-            ),
+            CheckResult::skipped(name, "none are written yet, see docs/VERIFICATION.md"),
             Vec::new(),
         ));
     }
 
-    let failed: Vec<&scenario::Outcome> = outcomes
+    let checked: Vec<&scenario::Outcome> = outcomes
+        .iter()
+        .filter(|outcome| outcome.was_checked())
+        .collect();
+    let failed: Vec<&scenario::Outcome> = checked
         .iter()
         .filter(|outcome| !outcome.passed())
+        .copied()
         .collect();
     for outcome in &failed {
         scenario::print_failure(outcome);
     }
+    for outcome in outcomes.iter().filter(|outcome| !outcome.was_checked()) {
+        if let Some(reason) = &outcome.skipped {
+            println!("  {} is not checked here: {reason}", outcome.id);
+        }
+    }
 
-    println!("scenarios: {} run, {} failed", outcomes.len(), failed.len());
+    println!(
+        "{name}: {} run, {} elsewhere, {} failed",
+        checked.len(),
+        outcomes.len() - checked.len(),
+        failed.len()
+    );
     let check = CheckResult::from_outcome(
-        "scenarios",
+        name,
         failed.is_empty(),
         "an acceptance scenario did not hold",
     );

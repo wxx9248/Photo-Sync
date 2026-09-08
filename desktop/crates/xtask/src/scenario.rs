@@ -14,6 +14,7 @@ use photo_sync_core::id::{DeviceId, DevicePath, Sha256, Timestamp, VaultName};
 use photo_sync_core::store::DeviceFileRow;
 use photo_sync_core::{CivilTime, Moment, RunningDigest};
 use photo_sync_sim::{Phone, PhoneFile, Simulation};
+use photo_sync_testclient::real::Prepared;
 use serde::Deserialize;
 
 /// The moment a scenario's desktop believes it is running at, unless it says otherwise.
@@ -21,6 +22,17 @@ const DEFAULT_NOW: &str = "2026-09-07 23:00:00";
 
 /// One device is enough for every scenario milestone M1 needs.
 const DEVICE: &str = "phone-a";
+
+/// Which desktop a scenario is checked against.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Against {
+    /// The simulator: milliseconds, and the only place a crash can be arranged.
+    Simulation,
+
+    /// A desktop that really runs, with a socket, a directory, and two databases. This
+    /// verifies the adapters the simulator replaces, not the rules.
+    RealStack,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -153,9 +165,21 @@ struct Observed {
     rejected: bool,
 }
 
+/// Why a scenario could not be checked here.
+enum Trouble {
+    /// It describes a world only the simulator can arrange.
+    OnlySimulated(String),
+
+    /// Something else went wrong, which is a failure like any other.
+    Failed(String),
+}
+
 pub struct Outcome {
     pub id: String,
     pub description: String,
+
+    /// Set when this scenario was not checked, and why.
+    pub skipped: Option<String>,
 
     /// The requirements this scenario claims. A failure puts each of them in doubt, so they
     /// are named alongside it rather than left for the reader to look up.
@@ -169,30 +193,31 @@ impl Outcome {
     pub fn passed(&self) -> bool {
         self.failures.is_empty()
     }
+
+    #[must_use]
+    pub fn was_checked(&self) -> bool {
+        self.skipped.is_none()
+    }
 }
 
 /// Runs every scenario in the directory, in name order.
-pub fn run_all(directory: &Path) -> Result<Vec<Outcome>, String> {
+pub fn run_all(directory: &Path, against: Against) -> Result<Vec<Outcome>, String> {
     let mut outcomes = Vec::new();
     for file in files(directory)? {
-        outcomes.push(run_file(&file)?);
+        outcomes.push(check(&load(&file)?, against));
     }
     Ok(outcomes)
 }
 
 /// Runs the one scenario with this identifier.
-pub fn run_one(directory: &Path, id: &str) -> Result<Outcome, String> {
+pub fn run_one(directory: &Path, id: &str, against: Against) -> Result<Outcome, String> {
     for file in files(directory)? {
         let scenario = load(&file)?;
         if scenario.id == id {
-            return Ok(check(&scenario));
+            return Ok(check(&scenario, against));
         }
     }
     Err(format!("no scenario has the identifier {id}"))
-}
-
-fn run_file(file: &Path) -> Result<Outcome, String> {
-    Ok(check(&load(file)?))
 }
 
 fn files(directory: &Path) -> Result<Vec<PathBuf>, String> {
@@ -218,10 +243,15 @@ fn load(file: &Path) -> Result<Scenario, String> {
     toml::from_str(&text).map_err(|error| format!("{}: {error}", file.display()))
 }
 
-fn check(scenario: &Scenario) -> Outcome {
-    let observed = match observe(scenario) {
+fn check(scenario: &Scenario, against: Against) -> Outcome {
+    let observed = match observe(scenario, against) {
         Ok(observed) => observed,
-        Err(reason) => return outcome_of(scenario, vec![reason]),
+        Err(Trouble::OnlySimulated(reason)) => {
+            let mut outcome = outcome_of(scenario, Vec::new());
+            outcome.skipped = Some(reason);
+            return outcome;
+        }
+        Err(Trouble::Failed(reason)) => return outcome_of(scenario, vec![reason]),
     };
 
     let mut failures = Vec::new();
@@ -269,6 +299,7 @@ fn outcome_of(scenario: &Scenario, failures: Vec<String>) -> Outcome {
     Outcome {
         id: scenario.id.clone(),
         description: scenario.description.clone(),
+        skipped: None,
         covers: scenario.covers.clone(),
         failures,
     }
@@ -294,23 +325,25 @@ fn compare(field: &str, expected: &[String], observed: &[String], into: &mut Vec
     }
 }
 
-fn observe(scenario: &Scenario) -> Result<Observed, String> {
-    let now = civil(scenario.now.as_deref().unwrap_or(DEFAULT_NOW))?;
-    let mut sim = Simulation::new(Moment {
-        at: Timestamp(instant_of(now)),
-        local: now,
-    });
-    if let Some(free) = scenario.desktop.free_space {
-        sim.free_space = free;
-    }
+/// The world a scenario describes, in the shape both desktops need.
+struct World {
+    phone: Phone,
+    imported: Vec<DeviceFileRow>,
+    vault: Vec<(VaultName, Vec<u8>)>,
+    captures: Vec<(Vec<u8>, CivilTime)>,
+    now: CivilTime,
+}
 
+fn world_of(scenario: &Scenario) -> Result<World, String> {
+    let now = civil(scenario.now.as_deref().unwrap_or(DEFAULT_NOW))?;
     let device = DeviceId::new(DEVICE);
     let mut phone = Phone::new(DEVICE, "Scenario phone");
+    let mut captures = Vec::new();
 
     for entry in &scenario.phone.library {
         let bytes = bytes_of(&entry.content, entry.size);
         if let Some(captured) = &entry.exif_datetime {
-            sim.storage.set_capture_time(&bytes, civil(captured)?);
+            captures.push((bytes.clone(), civil(captured)?));
         }
         phone.files.insert(
             DevicePath::new(&entry.path),
@@ -321,10 +354,11 @@ fn observe(scenario: &Scenario) -> Result<Observed, String> {
         );
     }
 
-    let mut vault_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut known: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut imported = Vec::new();
     for row in &scenario.desktop.index.device_file {
         let bytes = bytes_of(&row.content, row.size);
-        sim.store.remember_import(DeviceFileRow {
+        imported.push(DeviceFileRow {
             device: device.clone(),
             path: DevicePath::new(&row.device_path),
             size: row.size,
@@ -333,24 +367,126 @@ fn observe(scenario: &Scenario) -> Result<Observed, String> {
             vault_name: VaultName::new(&row.vault_name),
             committed_at: Timestamp(row.mtime),
         });
-        vault_bytes.insert(row.vault_name.clone(), bytes);
+        known.insert(row.vault_name.clone(), bytes);
     }
+
+    let mut vault = Vec::new();
     for name in &scenario.desktop.vault.files {
-        let bytes = vault_bytes
+        let bytes = known
             .get(name)
             .ok_or_else(|| format!("the vault lists {name}, which no index row names"))?;
-        sim.storage
-            .put_in_vault(&VaultName::new(name), bytes.clone());
+        vault.push((VaultName::new(name), bytes.clone()));
+    }
+
+    Ok(World {
+        phone,
+        imported,
+        vault,
+        captures,
+        now,
+    })
+}
+
+fn observe(scenario: &Scenario, against: Against) -> Result<Observed, Trouble> {
+    let world = world_of(scenario).map_err(Trouble::Failed)?;
+    match against {
+        Against::Simulation => in_simulation(scenario, world),
+        Against::RealStack => on_the_real_stack(scenario, world),
+    }
+}
+
+fn in_simulation(scenario: &Scenario, mut world: World) -> Result<Observed, Trouble> {
+    let mut sim = Simulation::new(Moment {
+        at: Timestamp(instant_of(world.now)),
+        local: world.now,
+    });
+    if let Some(free) = scenario.desktop.free_space {
+        sim.free_space = free;
+    }
+    for (content, captured) in &world.captures {
+        sim.storage.set_capture_time(content, *captured);
+    }
+    for row in &world.imported {
+        sim.store.remember_import(row.clone());
+    }
+    for (name, bytes) in &world.vault {
+        sim.storage.put_in_vault(name, bytes.clone());
     }
 
     sim.start();
     sim.take_log();
 
     let mut observed = Observed::default();
-    for event in &scenario.events {
+    play(&scenario.events, &mut world.phone, &mut sim, &mut observed);
+    observed.vault = sim
+        .storage
+        .vault()
+        .keys()
+        .map(ToString::to_string)
+        .collect();
+    Ok(observed)
+}
+
+fn on_the_real_stack(scenario: &Scenario, mut world: World) -> Result<Observed, Trouble> {
+    // A scenario that fixes the desktop clock or the free space cannot be arranged on a real
+    // machine, and saying so is better than quietly checking something else.
+    if scenario.now.is_some() {
+        return Err(Trouble::OnlySimulated(
+            "it fixes the desktop clock".to_string(),
+        ));
+    }
+    if scenario.desktop.free_space.is_some() {
+        return Err(Trouble::OnlySimulated(
+            "it fixes how much room the vault has".to_string(),
+        ));
+    }
+    if scenario
+        .phone
+        .library
+        .iter()
+        .any(|entry| entry.exif_datetime.is_some())
+    {
+        // Nothing reads a capture time out of a photograph yet, so a scenario that states one
+        // can only be arranged where the desktop is told. `STACK.md` §3.8 names what is
+        // missing.
+        return Err(Trouble::OnlySimulated(
+            "it states a capture time, and nothing reads one out of a photograph yet".to_string(),
+        ));
+    }
+
+    let scratch = Scratch::new(&scenario.id);
+    let prepared = Prepared::in_directory(&scratch.path);
+    prepared
+        .remember(&world.imported, &world.vault)
+        .map_err(Trouble::Failed)?;
+    let running = prepared.start().map_err(Trouble::Failed)?;
+
+    let mut observed = Observed::default();
+    let mut connected = running
+        .connect(&DeviceId::new(DEVICE), "Scenario phone")
+        .map_err(Trouble::Failed)?;
+    play(
+        &scenario.events,
+        &mut world.phone,
+        &mut connected,
+        &mut observed,
+    );
+
+    observed.vault = running.vault_names();
+    running.stop();
+    Ok(observed)
+}
+
+fn play(
+    events: &[ScenarioEvent],
+    phone: &mut Phone,
+    driver: &mut impl photo_sync_sim::Driver,
+    observed: &mut Observed,
+) {
+    for event in events {
         match event {
             ScenarioEvent::RunSession => {
-                let outcome = phone.run_session(&mut sim);
+                let outcome = phone.run_session(driver);
                 observed.rejected |= outcome.rejected.is_some();
                 observed.uploaded.extend(named(&outcome.uploaded));
                 observed
@@ -361,14 +497,26 @@ fn observe(scenario: &Scenario) -> Result<Observed, String> {
             }
         }
     }
+}
 
-    observed.vault = sim
-        .storage
-        .vault()
-        .keys()
-        .map(ToString::to_string)
-        .collect();
-    Ok(observed)
+/// A directory of its own for one scenario, removed when it ends.
+struct Scratch {
+    path: PathBuf,
+}
+
+impl Scratch {
+    fn new(id: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("photo-sync-{id}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        let _ = std::fs::create_dir_all(&path);
+        Self { path }
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 fn named(paths: &[DevicePath]) -> Vec<String> {

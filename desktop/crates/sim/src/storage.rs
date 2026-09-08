@@ -11,7 +11,8 @@
 use std::collections::BTreeMap;
 
 use photo_sync_core::CivilTime;
-use photo_sync_core::id::{DeviceId, FileId, VaultName};
+use photo_sync_core::id::{DeviceId, FileId, Timestamp, VaultName};
+use photo_sync_core::naming;
 
 /// One file in a device's staging directory.
 #[derive(Clone, Debug)]
@@ -116,15 +117,20 @@ impl Storage {
         self.staging.contains_key(&file)
     }
 
+    /// The readings a vault name may be built from, in the order `SPEC.md` §7.2 tries them:
+    /// what the photograph says about itself, and then when it was last modified.
     #[must_use]
-    pub fn name_sources(&self, file: FileId) -> Vec<CivilTime> {
+    pub fn name_sources(&self, file: FileId, mtime: Timestamp) -> Vec<CivilTime> {
         let Some(staged) = self.staging.get(&file) else {
             return Vec::new();
         };
-        self.name_sources
+        let mut sources = self
+            .name_sources
             .get(&staged.bytes)
             .cloned()
-            .unwrap_or_else(|| self.default_name_sources.clone())
+            .unwrap_or_else(|| self.default_name_sources.clone());
+        sources.push(naming::civil_from_unix(mtime.0));
+        sources
     }
 
     // ---- what a test says and asks -----------------------------------------------------

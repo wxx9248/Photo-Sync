@@ -794,11 +794,16 @@ fn a_verified_photo_records_where_its_name_may_come_from() {
     // Taken after the suffix is stripped and before the manifest records the file.
     assert!(position_of(&log, is_finalize) < sources_read);
     assert!(sources_read < position_of(&log, is_marked_verified));
+    // The order of SPEC.md §7.2: what the photograph says about itself, then when it was
+    // last modified.
     assert_eq!(
         sim.store
             .staged(file)
-            .map(|entry| entry.name_sources.as_slice()),
-        Some([CAPTURED].as_slice())
+            .map(|entry| entry.name_sources.clone()),
+        Some(vec![
+            CAPTURED,
+            photo_sync_core::naming::civil_from_unix(MTIME)
+        ])
     );
 }
 

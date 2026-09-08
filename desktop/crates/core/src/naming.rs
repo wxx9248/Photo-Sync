@@ -69,6 +69,44 @@ pub fn choose(candidates: &[CivilTime], imported_at: CivilTime) -> CivilTime {
         .unwrap_or(imported_at)
 }
 
+/// Turns seconds since the epoch into the wall-clock reading of that instant in UTC.
+///
+/// This is not a local reading and is no substitute for one: `SPEC.md` §7.2 wants the clock
+/// the photograph was taken by, and only the shell can know what that was. It lives here
+/// because both the shell and the simulator need the same arithmetic, and two copies of a
+/// calendar are two chances to disagree about a leap year.
+///
+/// The civil-from-days arithmetic is Howard Hinnant's, exact for every day the type holds.
+#[must_use]
+pub fn civil_from_unix(seconds: i64) -> CivilTime {
+    let days = seconds.div_euclid(86_400);
+    let rest = seconds.rem_euclid(86_400);
+
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+
+    CivilTime {
+        year: i32::try_from(year + i64::from(month <= 2)).unwrap_or(0),
+        month: u8::try_from(month).unwrap_or(1),
+        day: u8::try_from(day).unwrap_or(1),
+        hour: u8::try_from(rest / 3_600).unwrap_or(0),
+        minute: u8::try_from((rest % 3_600) / 60).unwrap_or(0),
+        second: u8::try_from(rest % 60).unwrap_or(0),
+    }
+}
+
 /// The part of a name before any collision suffix and extension.
 ///
 /// A commit uses this to ask which names it is about to assign are already spoken for.
@@ -246,6 +284,27 @@ mod tests {
         let name = assign(&[captured], import(), &photo("IMG_1.j g"), &nothing_taken());
 
         assert_eq!(name.as_str(), "2026-09-01_123456");
+    }
+
+    #[test]
+    fn the_epoch_reads_as_the_first_of_january_nineteen_seventy() {
+        assert_eq!(civil_from_unix(0), at(1970, 1, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn a_known_instant_reads_as_its_published_time() {
+        assert_eq!(civil_from_unix(1_787_563_800), at(2026, 8, 24, 9, 30, 0));
+    }
+
+    #[test]
+    fn the_last_second_of_a_leap_day_reads_correctly() {
+        assert_eq!(civil_from_unix(1_709_251_199), at(2024, 2, 29, 23, 59, 59));
+    }
+
+    #[test]
+    fn the_first_second_of_a_century_reads_correctly() {
+        // 2000-03-01, the day the arithmetic shifts its year on.
+        assert_eq!(civil_from_unix(951_868_800), at(2000, 3, 1, 0, 0, 0));
     }
 
     #[test]

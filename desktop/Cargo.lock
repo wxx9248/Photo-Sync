@@ -2071,6 +2071,7 @@ version = "0.1.0"
 dependencies = [
  "photo-sync-core",
  "photo-sync-sim",
+ "photo-sync-testclient",
  "serde",
  "serde_json",
  "toml",
