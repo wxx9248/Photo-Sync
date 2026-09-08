@@ -1,0 +1,25 @@
+# Rust
+/desktop/target/
+**/*.rs.bk
+
+# Gradle / Android
+/android/.gradle/
+/android/build/
+/android/**/build/
+/android/local.properties
+/android/.idea/
+*.apk
+*.aab
+
+# Generated protobuf sources are never committed
+/desktop/**/generated/
+/android/**/generated/
+
+# Harness output
+/verification/reports/*.json
+/verification/reports/traces/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
