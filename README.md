@@ -8,6 +8,7 @@ home network, then free space on the phone once the desktop can prove it holds t
 * `docs/VERIFICATION.md` describes how correctness is decided.
 * `docs/CONVENTIONS.md` describes how code and documents are written.
 * `docs/ROADMAP.md` describes the order the work happens in.
+* `docs/DEVELOPMENT.md` describes where the work runs and how to set a machine up.
 * `AGENTS.md` is the operating file for implementation work.
 
 Licensed under the GPL, version 3. See `COPYING`.

@@ -15,6 +15,8 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
+M0 is complete. The work in progress is **M1**.
+
 ### M0 Foundation
 
 Goal: a repository where work can start and be checked.
@@ -124,17 +126,16 @@ matrix for the target phones.
 
 Exit: both halves install on a clean machine and phone, and one real session runs end to end.
 
-## Pending inputs
+## Environment
 
-Two decisions are waiting on you and affect documents already written.
+`docs/DEVELOPMENT.md` records where the work runs and how to set a machine up. Two milestones
+need something beyond the defaults.
 
-**CI and the remote repository.** `VERIFICATION.md` §6 and decision V15 currently say there is
-no CI service, and `AGENTS.md` treats the pre-push hook as the only mechanical gate. Both change
-once the remote exists. The `./verify` tiers are the interface either way, so CI wiring means
-calling them and storing the report.
+**M6** tests the discovery code against the Rust test client inside the development machine.
+Discovery between the desktop and a real phone needs the machine bridged onto the local network,
+and that case runs on the desktop instead.
 
-**The development virtual machine.** The toolchain is not installed on the current host. The
-missing pieces are `cargo-nextest`, `cargo-mutants`, `cargo-deny`, `cargo-audit`, and the
-Android SDK with the platform and emulator images the managed-device tier needs. The runner
-reports a missing tool and skips that check rather than failing, so work can start before every
-tool exists.
+**M8** needs the Android SDK with its platform and emulator images. The emulator is accelerated
+there, because the processor is passed through and the host allows nested virtualisation. The
+Kotlin session module needs none of this and can be written and tested on any machine with a
+JDK.

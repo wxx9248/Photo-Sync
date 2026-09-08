@@ -42,8 +42,9 @@ Ranked, and derived from the design priorities in `SPEC.md` §1:
 | Packaging | PKGBUILD → single binary | self-hosted F-Droid repo |
 | License | GPL-3.0 | GPL-3.0 |
 
-Rust crate versions below were the current stable releases when this document was written and
-are pinned exactly in `Cargo.toml`. Android artifact versions live in the Gradle version
+Rust crate versions below were the current stable releases when this document was written. Each
+is pinned exactly in `Cargo.toml` as the milestone that needs it adds it, so a crate named here
+is a decision rather than a dependency the workspace already carries. Android artifact versions live in the Gradle version
 catalog (`gradle/libs.versions.toml`) and are pinned at project initialization.
 
 ## 3. Desktop
@@ -379,8 +380,8 @@ that makes divergence a compile error instead of a runtime data-loss bug.
 
 Generated at build time on both ends — `tonic-build` in the desktop's `build.rs`, the
 `protobuf-gradle-plugin` with the grpc-java and grpc-kotlin codegen plugins on Android. No
-generated sources are committed. `prost-build` needs a `protoc`; the Arch `protobuf` package
-supplies one, and `protoc-bin-vendored` is available if a fully hermetic build is wanted later.
+generated sources are committed. `prost-build` needs a `protoc`, which the distribution's
+`protobuf` package supplies, and `protoc-bin-vendored` is available if a fully hermetic build is wanted later.
 
 To keep compatibility auditable without adding tooling, CI checks in a
 `FileDescriptorSet` produced from the current schema and fails the build when a change to it is

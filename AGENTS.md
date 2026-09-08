@@ -41,7 +41,7 @@ it in its own commit. Do not work around it silently.
 ```
 ./verify quick            # < 30 s,  run constantly while working
 ./verify full             # < 5 min, required before any commit touching core
-./verify nightly          # hours,   runs on a timer, you normally only read its report
+./verify nightly          # hours,   on the development machine, unattended
 ./verify replay <seed>    # reproduce one simulator failure exactly
 ./verify scenario <id>    # run one acceptance scenario (add --real for the real stack)
 ./verify spec-check       # registry quotes still match SPEC.md verbatim
@@ -58,7 +58,8 @@ there for the same reasons.
 
 The JSON report names, for each failure: the requirement ID, the `SPEC.md` section, a seed, a
 one-line reproduction command, a trace file, and a structural diff of expected versus actual
-state when the model disagrees.
+state when the model disagrees. Until the simulator lands in milestone M2, it carries the check
+results and nothing else, because there are no seeds to report yet.
 
 Work in this order:
 

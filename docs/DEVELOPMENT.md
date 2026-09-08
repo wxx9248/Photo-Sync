@@ -1,43 +1,50 @@
 # Development environment
 
-What to install, where each part of the work runs, and the container settings each milestone
-needs.
+Where each part of the work runs, how to set the machine up, and what a few milestones need
+beyond the defaults.
 
-## Where work runs
+## The development machine
 
-| Work | Where |
-|---|---|
-| Desktop code, simulator, campaigns, mutation testing | Development container |
-| Kotlin session module, Android application, instrumented tests | Development container |
-| Desktop user interface, tray, suspend inhibition | Your Plasma session |
-| Discovery and sessions with a real phone | Your Plasma session, or the container on a bridged interface |
-| Every push and pull request | GitHub hosted runners |
+A local x86_64 virtual machine running Fedora 44 KDE, with 16 processors and 16 GiB of memory.
+Three details of its configuration decide what can be tested inside it:
 
-The container is an Arch system container under libvirt with systemd as its init and a
-directory-backed root on the host's ext4. That matters in two ways. Real filesystem semantics
-apply, so the tests that use real files behave the way the specification assumes, and the vault
-and its staging directory land on one filesystem, which is what makes commit by `rename()`
-atomic.
+* The processor is passed through and the host allows nested virtualisation, so the guest has a
+  working `/dev/kvm`. The Android emulator runs accelerated.
+* The display adapter is `virtio-vga-gl` with 3D acceleration, so the graphical shell renders
+  through real OpenGL rather than falling back to software.
+* The network interface is on a libvirt NAT network. Outbound access works. Multicast does not
+  reach the local network, which matters only for a real phone and is covered below.
 
-Two things do not belong in the container. The graphical shell needs a running Plasma session
-for its tray item and its suspend inhibitor. Discovery needs multicast to reach the phone, which
-the libvirt NAT network does not carry.
+Almost everything happens there: the desktop application, the simulator and its campaigns,
+mutation testing, the Kotlin session module, the Android application, and instrumented tests on
+the emulator.
 
-## Container setup
+Two things happen elsewhere. Acceptance with a real phone belongs on your desktop, which is the
+deployment target and is already on the same network as the phones. The Arch package build in
+milestone M9 also belongs there, or in an Arch container, because Fedora cannot exercise a
+PKGBUILD.
+
+## Setup
 
 ```sh
-pacman -S --needed base-devel git rust protobuf jdk21-openjdk android-tools
+sudo dnf install -y git rustup protobuf-compiler gcc gcc-c++ pkgconf-pkg-config \
+    java-21-openjdk-devel
+
+rustup-init -y
+rustup default stable
+rustup component add rustfmt clippy
+
 cargo install cargo-nextest cargo-mutants cargo-deny cargo-audit
 ```
 
-Arch's `rust` package includes `rustfmt` and `clippy`, so no separate components are needed.
 Install JDK 21 rather than a newer one, because the Android Gradle plugin supports it and later
-versions lag.
+versions lag behind.
 
-The graphical shell arrives in milestone M7 and needs a few more packages before it builds:
+The graphical shell arrives in milestone M7 and needs a few more development packages:
 
 ```sh
-pacman -S --needed fontconfig libxkbcommon wayland mesa
+sudo dnf install -y fontconfig-devel libxkbcommon-devel wayland-devel \
+    mesa-libEGL-devel mesa-libGL-devel
 ```
 
 Then clone and check the setup:
@@ -49,30 +56,40 @@ git config core.hooksPath hooks
 ./verify quick
 ```
 
+Give the machine a deploy key scoped to this repository rather than a personal key, so that
+nothing running there can reach your other repositories.
+
 The runner reports a missing tool and skips that check rather than failing, so a partial setup
 still gives useful output.
 
-## Container settings each milestone needs
+## Testing discovery
 
-**M6, discovery and real sessions.** The default libvirt NAT interface does not carry multicast
-to the local network, so `_photosync._tcp` is neither advertised to nor visible from a phone.
-Give the container a bridged or macvtap interface on the same network as the phones before this
-milestone, or run those tests from your desktop.
+Three cases look similar and need different things.
 
-**M8, Android instrumented tests.** The emulator needs `/dev/kvm`, which the container does not
-currently have. Pass the device through, or run the emulator on the host and point the tests at
-it over adb.
+**The discovery code itself**, meaning the mDNS responder and the browse path, is tested inside
+the virtual machine with the Rust test client as the peer. Nothing special is required.
+
+**Emulator sessions do not need discovery.** Point the application at an address, or use
+`adb forward`, and the emulator covers what only Android can answer: MediaStore, permissions,
+the foreground service, and the delete request. Exercising `NsdManager` against the emulator is
+a separate matter, because the emulator gives its guest a user-mode network that does not carry
+multicast. That needs the emulator started with TAP networking, not a change to the virtual
+machine.
+
+**A real phone on your network** is the only case that needs the virtual machine bridged onto
+the local network with macvtap. This is acceptance work, and it runs on your desktop instead,
+along with the manual matrix for the OEM keep-alive behavior that no emulator can reproduce.
 
 ## Continuous integration
 
 `.github/workflows/verify.yml` runs the quick and full tiers on every push and pull request. It
 installs the Rust toolchain, `protoc`, and `cargo-nextest`, then calls `./verify full` and keeps
-the JSON report as an artifact. Anything CI does goes through `./verify`, so a check that passes
-locally passes the same way there.
+the JSON report as an artifact. Everything CI does goes through `./verify`, so a check that
+passes locally passes there for the same reasons.
 
-Nightly campaigns and mutation testing want the container registered as a self-hosted runner.
-That job is added once the runner exists, because a scheduled job with no runner produces queued
-builds rather than results.
+Nightly campaigns and mutation testing want the virtual machine registered as a self-hosted
+runner. That job is added once the runner exists, because a scheduled job with no runner
+produces queued builds rather than results.
 
 **A self-hosted runner on a public repository runs code from pull requests, including from
 forks.** Restrict the self-hosted job to `push` on `main` and to `schedule`. Never let
@@ -83,7 +100,7 @@ forks.** Restrict the self-hosted job to `push` on `main` and to `schedule`. Nev
 ```sh
 ./verify quick      # constantly, while working
 ./verify full       # before a commit that touches the core
-./verify nightly    # in the container, unattended
+./verify nightly    # on the development machine, unattended
 ```
 
 See `docs/VERIFICATION.md` for what each tier contains and `AGENTS.md` for the rules that apply

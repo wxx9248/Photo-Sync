@@ -280,7 +280,9 @@ needs nothing installed beyond the toolchains in `STACK.md`.
 ```
 
 A human-readable summary prints alongside. The JSON is what an agent reads to decide its next
-action, so it always names a requirement, a spec section, and a single reproduction command.
+action, so it always names a requirement, a spec section, and a single reproduction command. The
+shape grows as the tiers land: today it carries the result of each check, and the campaign,
+mutation, and failure sections appear with the milestones that produce them.
 
 **The done gate.** A change is complete when all of the following hold:
 
@@ -341,13 +343,17 @@ toolchain, calls `./verify full`, and keeps the JSON report as an artifact. The 
 locally, so a check behaves the same way in both places. The pre-push hook runs the quick tier
 and the protected-artifact comparison before a push leaves the machine.
 
-The long tiers run on the development virtual machine rather than on hosted runners. Seed
-campaigns and mutation testing want a machine that is not competing with anything else, and their
-results are read at the start of the next session from `verification/reports/`.
+The long tiers run on the development machine rather than on hosted runners. Seed campaigns and
+mutation testing want a machine that is not competing with anything else, and their results are
+read at the start of the next session from `verification/reports/`. That machine also runs the
+emulator suite, since its processor is passed through and nested virtualisation gives it a
+working `/dev/kvm`.
 
-Two kinds of test cannot run in the development container as it stands. Discovery needs
-multicast that its network does not carry, and the emulator needs a device the container has not
-been given. `docs/DEVELOPMENT.md` records what each of those milestones needs.
+One kind of test stays outside it. A session with a real phone needs multicast on the local
+network, which the machine's NAT interface does not carry, so acceptance runs on the desktop
+that is the deployment target anyway. `docs/DEVELOPMENT.md` separates that from the two cases
+which look similar and are not: the discovery code is tested against the Rust test client, and
+emulator sessions do not use discovery at all.
 
 ## 7. Limits of the instrument
 
@@ -382,4 +388,4 @@ been given. `docs/DEVELOPMENT.md` records what each of those milestones needs.
 | V13 | Android split: JVM tests with a fake desktop, managed-device suite nightly, OEM behavior manual |
 | V14 | Performance split: configuration assertions are gated, wall-clock metrics are tracked only |
 | V15 | Hosted runners gate every push with the quick and full tiers; the development machine runs the long tiers |
-| V16 | Work runs in an x86_64 Arch container, except the user interface and multicast discovery, which need the desktop session |
+| V16 | Work runs in an x86_64 Fedora KDE virtual machine, including the emulator; sessions with a real phone run on the desktop |
