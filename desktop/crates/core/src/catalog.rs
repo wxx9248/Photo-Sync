@@ -39,3 +39,33 @@ impl Catalog {
         self.entries.is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, size: u64) -> CatalogEntry {
+        CatalogEntry {
+            path: DevicePath::new(format!("DCIM/Camera/{name}")),
+            size,
+            mtime: Timestamp(1_756_000_000),
+        }
+    }
+
+    #[test]
+    fn a_catalog_keeps_the_entries_and_the_total_it_was_given() {
+        let catalog = Catalog::new(vec![entry("one.jpg", 2400), entry("two.jpg", 1000)], 3400);
+
+        assert_eq!(catalog.entries().len(), 2);
+        assert_eq!(catalog.total_bytes(), 3400);
+        assert!(!catalog.is_empty());
+    }
+
+    #[test]
+    fn a_phone_with_nothing_on_it_has_an_empty_catalog() {
+        let catalog = Catalog::new(Vec::new(), 0);
+
+        assert!(catalog.is_empty());
+        assert_eq!(catalog.total_bytes(), 0);
+    }
+}

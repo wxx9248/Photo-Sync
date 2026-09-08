@@ -249,6 +249,22 @@ mod tests {
     }
 
     #[test]
+    fn a_stem_is_the_name_without_its_suffix_or_extension() {
+        covers!("R-NAME-001");
+        let captured = at(2026, 9, 1, 12, 34, 56);
+
+        assert_eq!(stem(&[captured], import()), "2026-09-01_123456");
+    }
+
+    #[test]
+    fn a_stem_falls_through_the_same_sources_a_name_does() {
+        covers!("R-NAME-003");
+        let flat = at(1980, 1, 1, 0, 0, 0);
+
+        assert_eq!(stem(&[flat], import()), "2026-09-07_230000");
+    }
+
+    #[test]
     fn a_second_photo_from_the_same_second_takes_a_suffix() {
         covers!("R-NAME-002");
         let captured = at(2026, 9, 1, 12, 34, 56);

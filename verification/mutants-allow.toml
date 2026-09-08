@@ -19,3 +19,8 @@ reason = "Wording of the log line naming where a commit stopped. The tests asser
 file = "desktop/crates/core/src/digest.rs"
 function = "RunningDigest::fmt"
 reason = "Debug rendering of the running digest. The digest itself is checked against the published SHA-256 vectors."
+
+[[allow]]
+file = "desktop/crates/core/src/id.rs"
+function = "Sha256::fmt"
+reason = "Debug rendering of a digest. Its hexadecimal form is checked directly, and this only decides how a failure message reads."
