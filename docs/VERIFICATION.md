@@ -345,9 +345,9 @@ The long tiers run on the development virtual machine rather than on hosted runn
 campaigns and mutation testing want a machine that is not competing with anything else, and their
 results are read at the start of the next session from `verification/reports/`.
 
-Android instrumented tests run on x86_64. The virtual machine is aarch64, and Google publishes
-neither an `aapt2` nor an emulator for that platform, so the Android application is built and
-instrumented on the desktop or on a hosted runner. `docs/DEVELOPMENT.md` records the split.
+Two kinds of test cannot run in the development container as it stands. Discovery needs
+multicast that its network does not carry, and the emulator needs a device the container has not
+been given. `docs/DEVELOPMENT.md` records what each of those milestones needs.
 
 ## 7. Limits of the instrument
 
@@ -382,4 +382,4 @@ instrumented on the desktop or on a hosted runner. `docs/DEVELOPMENT.md` records
 | V13 | Android split: JVM tests with a fake desktop, managed-device suite nightly, OEM behavior manual |
 | V14 | Performance split: configuration assertions are gated, wall-clock metrics are tracked only |
 | V15 | Hosted runners gate every push with the quick and full tiers; the development machine runs the long tiers |
-| V16 | Android builds and instrumented tests run on x86_64, because no aarch64 Linux `aapt2` or emulator exists |
+| V16 | Work runs in an x86_64 Arch container, except the user interface and multicast discovery, which need the desktop session |
