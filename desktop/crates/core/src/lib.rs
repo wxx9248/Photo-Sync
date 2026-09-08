@@ -11,6 +11,7 @@ pub mod digest;
 pub mod effect;
 pub mod event;
 pub mod id;
+pub mod naming;
 pub mod port;
 mod session;
 pub mod store;
@@ -21,6 +22,7 @@ pub use digest::RunningDigest;
 pub use effect::{Directory, Effect, RejectReason};
 pub use event::Event;
 pub use id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp, VaultName};
+pub use naming::CivilTime;
 
 /// Declares which requirements a test covers.
 ///
