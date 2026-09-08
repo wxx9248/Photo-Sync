@@ -8,11 +8,22 @@
 
 use std::collections::BTreeSet;
 
-use crate::id::{DevicePath, VaultName};
+use crate::id::{DevicePath, Timestamp, VaultName};
 
 /// The earliest year a capture time may claim before it is treated as nonsense. `SPEC.md`
 /// §7.2 falls through to the next source below this.
 const EARLIEST_PLAUSIBLE_YEAR: i32 = 2000;
+
+/// One moment, as both an instant and the local reading of it.
+///
+/// The core cannot derive either from the other, so whatever reads the clock supplies both.
+/// A record of when a batch committed wants the instant; a name built from that time wants
+/// the reading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Moment {
+    pub at: Timestamp,
+    pub local: CivilTime,
+}
 
 /// A wall-clock reading with no timezone attached, which is what a vault name is made of.
 ///

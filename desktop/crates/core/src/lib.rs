@@ -6,6 +6,7 @@
 //! run inside the simulator described in `docs/VERIFICATION.md`.
 
 pub mod catalog;
+pub mod commit;
 pub mod desktop;
 pub mod digest;
 pub mod effect;
@@ -22,7 +23,7 @@ pub use digest::RunningDigest;
 pub use effect::{Directory, Effect, RejectReason};
 pub use event::Event;
 pub use id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp, VaultName};
-pub use naming::CivilTime;
+pub use naming::{CivilTime, Moment};
 
 /// Declares which requirements a test covers.
 ///
