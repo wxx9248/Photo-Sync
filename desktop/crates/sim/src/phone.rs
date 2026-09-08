@@ -14,7 +14,14 @@ use photo_sync_core::event::{DeletionOutcome, DeletionResult, Event};
 use photo_sync_core::id::{DeviceId, DevicePath, Sha256, Timestamp};
 use photo_sync_core::{CatalogEntry, RunningDigest};
 
-use crate::run::Simulation;
+/// Something a phone can talk to: it takes an event and says what the desktop answered.
+///
+/// The simulator is one. The real desktop is another, which is what lets one session be run
+/// against both and compared, as `docs/VERIFICATION.md` §L4 asks.
+pub trait Driver {
+    fn deliver(&mut self, event: Event);
+    fn take_log(&mut self) -> Vec<Effect>;
+}
 
 /// How much of a file travels in one message. `STACK.md` §5.3 fixes it at 512 KB.
 const CHUNK_BYTES: usize = 512 * 1024;
@@ -98,7 +105,7 @@ impl Phone {
     }
 
     /// Runs one session from the handshake to the summary.
-    pub fn run_session(&mut self, sim: &mut Simulation) -> SessionOutcome {
+    pub fn run_session<D: Driver>(&mut self, sim: &mut D) -> SessionOutcome {
         let mut outcome = SessionOutcome::default();
 
         sim.deliver(Event::PeerConnected {
@@ -160,7 +167,7 @@ impl Phone {
     /// Sends one file, from the offset the desktop asked for. The digest covers the whole
     /// file, including a prefix the desktop already holds, so resume proves nothing about
     /// trust. `SPEC.md` §7.6.
-    fn upload(&self, sim: &mut Simulation, wanted: &ToSend) {
+    fn upload<D: Driver>(&self, sim: &mut D, wanted: &ToSend) {
         let Some(file) = self.files.get(&wanted.path) else {
             return;
         };

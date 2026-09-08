@@ -268,3 +268,13 @@ pub fn moment(at: i64, local: photo_sync_core::CivilTime) -> Moment {
         local,
     }
 }
+
+impl crate::phone::Driver for Simulation {
+    fn deliver(&mut self, event: Event) {
+        Simulation::deliver(self, event);
+    }
+
+    fn take_log(&mut self) -> Vec<Effect> {
+        Simulation::take_log(self)
+    }
+}

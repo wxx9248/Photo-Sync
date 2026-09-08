@@ -10,6 +10,10 @@ photo-sync-core.workspace = true
 photo-sync-protocol.workspace = true
 refinery.workspace = true
 rusqlite.workspace = true
+rustix.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+photo-sync-sim.workspace = true

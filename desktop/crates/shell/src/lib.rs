@@ -7,5 +7,7 @@
 //!
 //! [`Effect`]: photo_sync_core::Effect
 
+pub mod clock;
+pub mod desk;
 pub mod storage;
 pub mod store;

@@ -460,8 +460,10 @@ version = "0.1.0"
 dependencies = [
  "photo-sync-core",
  "photo-sync-protocol",
+ "photo-sync-sim",
  "refinery",
  "rusqlite",
+ "rustix",
 ]
 
 [[package]]

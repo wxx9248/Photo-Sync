@@ -15,7 +15,7 @@ pub mod run;
 pub mod storage;
 pub mod store;
 
-pub use phone::{Phone, PhoneFile, SessionOutcome};
+pub use phone::{Driver, Phone, PhoneFile, SessionOutcome};
 pub use run::{Faults, Simulation};
 pub use storage::Storage;
 pub use store::Store;
