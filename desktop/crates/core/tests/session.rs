@@ -708,6 +708,7 @@ fn an_offset_the_desktop_did_not_offer_is_refused() {
 
 #[test]
 fn more_bytes_than_the_file_declared_end_the_transfer() {
+    covers!("R-XFER-005");
     let mut desk = Desk::new();
 
     offer_one_photo(&mut desk);

@@ -161,6 +161,10 @@ impersonation is blocked by pairing alone.
    against the phone's digest, atomically renames to strip the suffix, and records
    `(path, size, mtime, sha256)` as a **verified** manifest entry.
    * Hash mismatch → delete the partial, one full re-transfer, then skip + report.
+   * A stream is bounded by the size its catalog entry declared. Bytes past that size are
+     refused and the file is reported as a receive error, keeping its partial for a later
+     resume. The catalog is the only statement of how large a file is, so a desktop that
+     kept reading would let one phone fill the staging filesystem.
    * Resume of partial files follows §7.6.
    * **All verified files are staged, duplicate content included.** Deduplication happens
      at exactly one point: under the commit lock (§7.3 step 1). (A receive-time index
@@ -387,3 +391,4 @@ non-camera buckets (screenshots, app downloads), iOS. Also explicitly out of sco
 | R22 | Repeated "kept" without re-import flags a stale index row; force re-import escape hatch |
 | R23 | Commit clears the whole device staging dir; partials are progress-only and may be discarded |
 | R24 | Vault path is a plain setting (no migration); index lives in the app data directory |
+| R25 | A stream is bounded by its declared catalog size; an overrun is an ordinary receive error |
