@@ -1,0 +1,10 @@
+# Toolchain versions were the latest stable releases when the project was created. The Android
+# SDK platform is not installed yet, so `compileSdk` is confirmed at the first build.
+[versions]
+agp = "9.4.0"
+kotlin = "2.4.10"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
