@@ -5,6 +5,7 @@
 //! so the key that authenticated the connection travels with it.
 
 use std::net::SocketAddr;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -19,8 +20,9 @@ use tonic::transport::server::Connected;
 use crate::desk::Desk;
 use crate::identity::Identity;
 use crate::pinning::{Paired, public_key_of};
-use crate::server::{PeerKey, SyncService};
+use crate::server::{PairingService, PeerKey, SyncService};
 use crate::tls::{PairingWindow, server_config};
+use photo_sync_protocol::v1::pairing_server::PairingServer;
 use photo_sync_protocol::v1::photo_sync_server::PhotoSyncServer;
 
 /// A connection, and the key that got it in.
@@ -96,7 +98,32 @@ pub async fn listen(
     desk: Arc<AsyncMutex<Desk>>,
     name: &str,
 ) -> std::io::Result<Listening> {
-    let config = server_config(&identity, Arc::clone(&paired), pairing)
+    listen_in(
+        address,
+        identity,
+        paired,
+        pairing,
+        desk,
+        name,
+        Path::new("."),
+    )
+    .await
+}
+
+/// Serves phones, recording anything newly paired in `directory`.
+///
+/// # Errors
+/// When the socket cannot be bound or the identity will not make a server configuration.
+pub async fn listen_in(
+    address: SocketAddr,
+    identity: Arc<Identity>,
+    paired: Arc<Mutex<Paired>>,
+    pairing: PairingWindow,
+    desk: Arc<AsyncMutex<Desk>>,
+    name: &str,
+    directory: &Path,
+) -> std::io::Result<Listening> {
+    let config = server_config(&identity, Arc::clone(&paired), pairing.clone())
         .map_err(|error| std::io::Error::other(error.to_string()))?;
     let acceptor = TlsAcceptor::from(Arc::new(config));
 
@@ -125,11 +152,13 @@ pub async fn listen(
         }
     });
 
-    let service = SyncService::new(desk, paired, name);
+    let sync = SyncService::new(desk, Arc::clone(&paired), name);
+    let meeting = PairingService::new(identity, paired, pairing, directory, name);
     let serving = tokio::spawn(async move {
         let incoming = tokio_stream::wrappers::ReceiverStream::new(incoming);
         let _ = tonic::transport::Server::builder()
-            .add_service(PhotoSyncServer::new(service))
+            .add_service(PhotoSyncServer::new(sync))
+            .add_service(PairingServer::new(meeting))
             .serve_with_incoming(incoming)
             .await;
     });

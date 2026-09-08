@@ -446,3 +446,83 @@ fn into_chunks<T, C>(entries: Vec<T>, build: impl Fn(Vec<T>, bool) -> C) -> Vec<
 fn stream_of<T: Send + 'static>(chunks: Vec<T>) -> ChunkStream<T> {
     Box::pin(tokio_stream::iter(chunks.into_iter().map(Ok)))
 }
+
+/// The one-time exchange of `SPEC.md` §5.2.
+///
+/// A phone the desktop has never met can only get this far while a person has opened pairing.
+/// The desktop puts a code on its screen, the phone shows the same code, and a person who can
+/// see both says whether they match. Nothing about the code travels over the connection it is
+/// protecting: both ends compute it from the two keys they already hold.
+pub struct PairingService {
+    identity: Arc<crate::identity::Identity>,
+    paired: Arc<Mutex<Paired>>,
+    window: crate::tls::PairingWindow,
+    directory: std::path::PathBuf,
+    name: String,
+}
+
+impl PairingService {
+    #[must_use]
+    pub fn new(
+        identity: Arc<crate::identity::Identity>,
+        paired: Arc<Mutex<Paired>>,
+        window: crate::tls::PairingWindow,
+        directory: &std::path::Path,
+        name: &str,
+    ) -> Self {
+        Self {
+            identity,
+            paired,
+            window,
+            directory: directory.to_path_buf(),
+            name: name.to_string(),
+        }
+    }
+}
+
+#[tonic::async_trait]
+impl wire::pairing_server::Pairing for PairingService {
+    async fn pair(
+        &self,
+        request: Request<wire::PairRequest>,
+    ) -> Result<Response<wire::PairResponse>, Status> {
+        if !self.window.is_open() {
+            return Err(Status::failed_precondition(
+                "this desktop is not open for pairing",
+            ));
+        }
+        let Some(PeerKey(Some(key))) = request.extensions().get::<PeerKey>().cloned() else {
+            return Err(Status::unauthenticated("this connection presented no key"));
+        };
+
+        let asked = request.into_inner();
+        if asked.protocol_version != photo_sync_protocol::PROTOCOL_VERSION {
+            return Err(Status::failed_precondition(format!(
+                "this desktop speaks version {}",
+                photo_sync_protocol::PROTOCOL_VERSION
+            )));
+        }
+
+        // The code binds both keys, so a man in the middle holding a different key with each
+        // side cannot make the two screens agree.
+        let code = crate::identity::pairing_code(self.identity.public_key(), &key);
+        self.window.show(&code);
+
+        let accepted = self.window.decision().await.unwrap_or(false);
+        if accepted {
+            let Ok(mut paired) = self.paired.lock() else {
+                return Err(Status::internal("the paired phones could not be written"));
+            };
+            paired.pair(&key, &DeviceId::new(&asked.device_id), &asked.device_name);
+            paired
+                .save(&self.directory)
+                .map_err(|error| Status::internal(error.to_string()))?;
+        }
+        self.window.close();
+
+        Ok(Response::new(wire::PairResponse {
+            accepted,
+            desktop_name: self.name.clone(),
+        }))
+    }
+}

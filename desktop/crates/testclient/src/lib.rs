@@ -375,3 +375,86 @@ impl Connected {
         }
     }
 }
+
+/// A pairing exchange in flight: the code the phone would show, and the answer still to come.
+pub struct Pairing {
+    /// What this phone puts on its screen for a person to compare with the desktop's.
+    pub code: String,
+
+    /// The desktop this phone met, which it pins if the person says the codes matched.
+    pub desktop_key: Vec<u8>,
+
+    answer: tokio::task::JoinHandle<bool>,
+    runtime: Handle,
+}
+
+impl Pairing {
+    /// Waits for the person at the desktop to decide.
+    #[must_use]
+    pub fn settled(self) -> bool {
+        self.runtime.block_on(self.answer).unwrap_or(false)
+    }
+}
+
+/// Meets a desktop for the first time, the way `SPEC.md` §5.2 describes.
+///
+/// The call does not return until a person at the desktop has decided, so it is left running
+/// while the caller compares the two codes.
+///
+/// # Errors
+/// When the desktop cannot be reached or refuses to pair.
+pub fn pair(
+    runtime: &Handle,
+    address: SocketAddr,
+    identity: &Identity,
+    device: &DeviceId,
+    name: &str,
+) -> Result<Pairing, String> {
+    let (config, met) =
+        photo_sync::tls::client_config_while_pairing(identity).map_err(|e| e.to_string())?;
+    let connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
+
+    let channel = runtime
+        .block_on(async move {
+            Endpoint::from_static("http://phone-sync.invalid")
+                .connect_with_connector(tower::service_fn(move |_: Uri| {
+                    let connector = connector.clone();
+                    async move {
+                        let socket = tokio::net::TcpStream::connect(address).await?;
+                        let stream = connector.connect(rustls_name(), socket).await?;
+                        Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+                    }
+                }))
+                .await
+        })
+        .map_err(|error| error.to_string())?;
+
+    let desktop_key = met
+        .lock()
+        .map_err(|_| "the desktop key was not recorded")?
+        .clone()
+        .ok_or("the desktop presented no key")?;
+
+    // Both ends compute the code from the two keys they hold. Nothing about it is sent.
+    let code = photo_sync::identity::pairing_code(&desktop_key, identity.public_key());
+
+    let asked = wire::PairRequest {
+        protocol_version: photo_sync_protocol::PROTOCOL_VERSION,
+        device_id: device.to_string(),
+        device_name: name.to_string(),
+    };
+    let mut client = wire::pairing_client::PairingClient::new(channel);
+    let answer = runtime.spawn(async move {
+        client
+            .pair(asked)
+            .await
+            .is_ok_and(|answer| answer.into_inner().accepted)
+    });
+
+    Ok(Pairing {
+        code,
+        desktop_key,
+        answer,
+        runtime: runtime.clone(),
+    })
+}
