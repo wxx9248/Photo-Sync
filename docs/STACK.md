@@ -337,6 +337,23 @@ different codes on the two screens, so a mismatch is visible rather than silent.
 must be explicitly opened on the desktop; outside that window the verifier accepts pinned peers
 only.
 
+Both ends compute the code the same way, so it is written down exactly:
+
+```
+digest = SHA-256( "photo-sync pairing v1"
+                || be32(len(desktop SPKI)) || desktop SPKI
+                || be32(len(phone SPKI))   || phone SPKI )
+code   = first four bytes of digest, big-endian, modulo 1,000,000, as six digits
+```
+
+The label separates this digest from any other the project takes. The lengths are inside it, so
+no pair of keys can be rearranged into a different pair with the same code. The desktop's key
+comes first, and both ends know which they are holding. Six digits is the familiar length and
+is worth guessing only during the seconds pairing is open.
+
+The cross-language vector of `VERIFICATION.md` §L4 lands with the Kotlin half in M8; a vector
+only one implementation reads is not yet doing the job vectors exist for.
+
 ### 4.7 Hashing
 
 `MessageDigest.getInstance("SHA-256")`, which Conscrypt backs with ARMv8 cryptographic
