@@ -1,0 +1,5 @@
+#!/bin/sh
+# Entry point for every verification tier. See docs/VERIFICATION.md.
+set -e
+cd "$(dirname "$0")/desktop"
+exec cargo run --quiet --package xtask -- verify "$@"

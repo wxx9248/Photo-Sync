@@ -1,0 +1,6 @@
+#!/bin/sh
+# Blocks a push when the fast tier fails or a protected artifact changed without a spec change.
+# Install with: git config core.hooksPath hooks
+set -e
+./verify quick
+./verify protected-artifacts --against origin/main
