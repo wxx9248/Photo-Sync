@@ -7,5 +7,9 @@ fn main() {
         println!("cargo:rerun-if-changed={file}");
     }
 
-    prost_build::compile_protos(&files, &["../../../proto"]).expect("protobuf schema is valid");
+    tonic_prost_build::configure()
+        .build_server(true)
+        .build_client(true)
+        .compile_protos(&files, &["../../../proto"])
+        .expect("protobuf schema is valid");
 }

@@ -1,0 +1,23 @@
+[package]
+name = "photo-sync-testclient"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# The Rust test client of milestone M1. It speaks the real protocol so that one session can be
+# run against the real desktop and compared with the same session in the simulator.
+[dependencies]
+photo-sync.workspace = true
+photo-sync-core.workspace = true
+photo-sync-protocol.workspace = true
+photo-sync-sim.workspace = true
+hyper-util.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-rustls.workspace = true
+tonic.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

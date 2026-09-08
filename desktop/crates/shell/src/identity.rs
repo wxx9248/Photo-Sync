@@ -34,6 +34,7 @@ pub enum IdentityError {
 }
 
 /// One desktop's certificate and the key behind it.
+#[derive(Clone)]
 pub struct Identity {
     certificate: Vec<u8>,
     private_key: Vec<u8>,
