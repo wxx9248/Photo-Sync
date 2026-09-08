@@ -4,9 +4,21 @@
 //! filesystem that models durability the way real storage does, a network that drops and
 //! reorders, and the ability to stop the process at any effect boundary.
 //!
-//! Scope today is the seed and the run identity that failures are reported with. The
-//! filesystem, the SQLite virtual file system, and the scenario generator arrive in milestone
-//! M2, described in `docs/ROADMAP.md`.
+//! Scope today is the seam: storage and a store the core cannot tell from the shell, a loop
+//! that performs effects and answers with events, and a phone that plays its half of
+//! `SPEC.md` §6. Durability modelling, the SQLite virtual file system, crashes at an effect
+//! boundary, and the scenario generator arrive in milestone M2, described in
+//! `docs/ROADMAP.md`.
+
+pub mod phone;
+pub mod run;
+pub mod storage;
+pub mod store;
+
+pub use phone::{Phone, PhoneFile, SessionOutcome};
+pub use run::{Faults, Simulation};
+pub use storage::Storage;
+pub use store::Store;
 
 /// Identifies one simulator run. Printed with every failure so the run can be replayed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
