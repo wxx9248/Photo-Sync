@@ -69,6 +69,14 @@ pub fn choose(candidates: &[CivilTime], imported_at: CivilTime) -> CivilTime {
         .unwrap_or(imported_at)
 }
 
+/// The part of a name before any collision suffix and extension.
+///
+/// A commit uses this to ask which names it is about to assign are already spoken for.
+#[must_use]
+pub fn stem(candidates: &[CivilTime], imported_at: CivilTime) -> String {
+    choose(candidates, imported_at).render()
+}
+
 /// Builds the name a file takes in the vault, avoiding every name already spoken for.
 ///
 /// `taken` is both the names the index already holds and the names assigned earlier in this

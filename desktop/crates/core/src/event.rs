@@ -5,7 +5,7 @@
 
 use crate::catalog::CatalogEntry;
 use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp};
-use crate::naming::CivilTime;
+use crate::naming::{CivilTime, Moment};
 use crate::port::StorageError;
 use crate::store::{StoreError, StoreResponse};
 
@@ -99,6 +99,11 @@ pub enum Event {
         available_bytes: u64,
     },
 
+    ClockRead {
+        op: OpId,
+        moment: Moment,
+    },
+
     ShutdownRequested,
 }
 
@@ -116,6 +121,11 @@ pub enum StorageOutcome {
 
     /// Wall-clock readings a vault name may be built from, in the order of `SPEC.md` §7.2.
     NameSources(Vec<CivilTime>),
+
+    /// Whether a staged file is still where the manifest says it is.
+    StagingFile {
+        present: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

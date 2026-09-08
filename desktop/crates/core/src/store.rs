@@ -76,6 +76,14 @@ pub enum StoreRequest {
         digests: Vec<Sha256>,
     },
 
+    /// Vault names already spoken for that begin with any of these stems.
+    ///
+    /// A commit needs to know which of the names it is about to assign are taken, and asking
+    /// by stem answers that without listing a vault of fifty thousand files.
+    TakenVaultNames {
+        stems: Vec<String>,
+    },
+
     /// Rows for the paths in a catalog, used to classify entries as already imported.
     LookupDeviceFiles {
         device: DeviceId,
@@ -103,6 +111,7 @@ pub enum StoreResponse {
     StagingEntries(Vec<StagingEntry>),
     CommitPlan(Option<Vec<PlanEntry>>),
     Content(Vec<ContentRow>),
+    VaultNames(Vec<VaultName>),
     DeviceFiles(Vec<DeviceFileRow>),
 }
 

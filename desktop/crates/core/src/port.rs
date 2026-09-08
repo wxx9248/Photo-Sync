@@ -56,6 +56,9 @@ pub trait FileOps {
     fn clear_staging_directory(&self, device: &DeviceId) -> Result<(), StorageError>;
 
     fn stat_vault_file(&self, name: &VaultName) -> Result<Option<VaultFileFacts>, StorageError>;
+
+    /// Whether a staged file is still where the manifest says it is.
+    fn stat_staging_file(&self, file: FileId) -> Result<bool, StorageError>;
 }
 
 pub trait Store {

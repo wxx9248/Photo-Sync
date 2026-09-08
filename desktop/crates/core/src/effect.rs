@@ -42,6 +42,19 @@ pub enum Effect {
         length: u64,
     },
 
+    /// Reads the desktop clock. The core cannot read one, and `SPEC.md` §7.2 names the
+    /// import time as the last source a vault name falls back to.
+    ReadClock {
+        op: OpId,
+    },
+
+    /// Checks that a staged file is still there. `SPEC.md` §7.3 drops a manifest entry
+    /// without one rather than sealing a rename that could never happen.
+    StatStagingFile {
+        op: OpId,
+        file: FileId,
+    },
+
     /// Reads the wall-clock readings a vault name may be built from, in the order
     /// `SPEC.md` §7.2 lists them. The shell extracts the capture time and localizes both it
     /// and the modification time handed to it, because converting an instant into a wall

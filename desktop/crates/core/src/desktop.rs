@@ -9,7 +9,11 @@
 //! Commit, deletion nomination, and startup recovery are not built yet. The desktop says so
 //! when a phone asks for them rather than reporting a session it did not finish.
 
-use std::collections::{BTreeMap, BTreeSet};
+mod commit;
+
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+use commit::{Answer, Running, Step};
 
 use crate::catalog::{Catalog, CatalogEntry};
 use crate::digest::RunningDigest;
@@ -47,6 +51,18 @@ pub struct Desktop {
 
     /// Devices whose diff is waiting for that answer.
     awaiting_ids: BTreeSet<DeviceId>,
+
+    /// The commit running now. `SPEC.md` §7.3 allows one at a time across every device.
+    running: Option<Running>,
+
+    /// Devices whose commit is enqueued, and the order they will run in. Both together are
+    /// the per-device lock: a phone named here cannot start a session.
+    queued: BTreeSet<DeviceId>,
+    order: VecDeque<DeviceId>,
+
+    /// Devices whose commit stopped part-way. Their sealed write-log is waiting to be
+    /// replayed, so nothing else may touch their staging.
+    halted: BTreeSet<DeviceId>,
 
     next_op: u64,
 }
@@ -106,6 +122,10 @@ enum Pending {
     RemoveMismatched {
         file: FileId,
     },
+
+    /// One step of the running commit. The commit knows which device it belongs to, so the
+    /// step says only where in `SPEC.md` §7.3 the answer lands.
+    Commit(Step),
 }
 
 /// One durability step: a file sync and the watermark advance that follows it.
@@ -160,6 +180,10 @@ impl Desktop {
             pending: BTreeMap::new(),
             files: None,
             awaiting_ids: BTreeSet::new(),
+            running: None,
+            queued: BTreeSet::new(),
+            order: VecDeque::new(),
+            halted: BTreeSet::new(),
             next_op: 0,
         }
     }
@@ -197,32 +221,36 @@ impl Desktop {
                 digest,
             } => self.upload_closed(&device, file, digest),
             Event::UploadAborted { device, file } => self.upload_aborted(&device, file),
-            Event::FinishRequested { device } => {
-                Self::needs_commit_path("the finish signal", &device)
+            Event::FinishRequested { device } | Event::ManualCommitRequested { device } => {
+                self.enqueue_commit(&device)
             }
             Event::DeletionsReported {
                 device,
                 outcomes: _,
             } => Self::needs_commit_path("the deletion results", &device),
-            Event::ManualCommitRequested { device } => {
-                Self::needs_commit_path("\"Commit now\"", &device)
-            }
             Event::StorageOpCompleted { op, result } => self.storage_completed(op, result),
             Event::StoreOpCompleted { op, result } => self.store_completed(op, result),
             Event::FreeSpaceMeasured {
                 op,
                 available_bytes,
             } => self.free_space_measured(op, available_bytes),
+            Event::ClockRead { op, moment } => {
+                let Some(Pending::Commit(Step::ReadClock)) = self.pending.remove(&op) else {
+                    return vec![warn(format!(
+                        "the clock was read for {op:?}, which did not ask"
+                    ))];
+                };
+                self.clock_read(moment)
+            }
             Event::ShutdownRequested => Vec::new(),
         }
     }
 
     /// Says plainly that a step is not built rather than reporting a session as finished.
-    /// The commit sequence of §7.3 and the deletion protocol of §8 are the next change in
-    /// milestone M1, described in `docs/ROADMAP.md`.
+    /// The deletion protocol of `SPEC.md` §8 is the next change in milestone M1.
     fn needs_commit_path(step: &str, device: &DeviceId) -> Vec<Effect> {
         vec![warn(format!(
-            "{step} from {device} needs the commit sequence, which is not built yet"
+            "{step} from {device} needs the deletion protocol, which is not built yet"
         ))]
     }
 
@@ -244,6 +272,10 @@ impl Desktop {
     // ---- the session, from connection to diff -------------------------------------------
 
     fn peer_connected(&mut self, device: DeviceId, name: String) -> Vec<Effect> {
+        if self.is_committing(&device) {
+            return Self::refuse_while_committing(&device);
+        }
+
         let mut effects = Vec::new();
 
         // A second live connection for one device supersedes the first. Whatever the previous
@@ -957,6 +989,13 @@ impl Desktop {
 
     fn storage_succeeded(&mut self, pending: Pending, outcome: StorageOutcome) -> Vec<Effect> {
         match pending {
+            Pending::Commit(step) => {
+                let answer = match outcome {
+                    StorageOutcome::StagingFile { present } => Answer::Present(present),
+                    _ => Answer::Done,
+                };
+                self.commit_step(step, answer)
+            }
             Pending::ReadNameSources {
                 device,
                 file,
@@ -993,6 +1032,7 @@ impl Desktop {
 
     fn storage_failed(&mut self, pending: Pending, error: &StorageError) -> Vec<Effect> {
         match pending {
+            Pending::Commit(step) => self.commit_step(step, Answer::Failed(error.to_string())),
             Pending::ReadNameSources {
                 device,
                 file,
@@ -1053,6 +1093,7 @@ impl Desktop {
 
     fn store_succeeded(&mut self, pending: Pending, response: StoreResponse) -> Vec<Effect> {
         match pending {
+            Pending::Commit(step) => self.commit_step(step, Answer::Store(response)),
             Pending::SeedFileIds => match response {
                 StoreResponse::HighestStagingFileId(highest) => self.seed_file_ids(highest),
                 other => vec![mismatched(&other)],
@@ -1102,6 +1143,7 @@ impl Desktop {
 
     fn store_failed(&mut self, pending: Pending, error: &StoreError) -> Vec<Effect> {
         match pending {
+            Pending::Commit(step) => self.commit_step(step, Answer::Failed(error.to_string())),
             Pending::BeginEntry { device, file } | Pending::MarkVerified { device, file } => self
                 .fail_upload(
                     &device,
