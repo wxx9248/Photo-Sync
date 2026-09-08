@@ -47,12 +47,46 @@ impl CheckResult {
     }
 }
 
+/// How much of the specification is being verified, and what is not.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Requirements {
+    pub active: usize,
+
+    /// Active requirements a passing test claims. The tier is only green when every test
+    /// passed, so in a green run this is the number actually verified.
+    pub verified: usize,
+
+    pub unverified: Vec<String>,
+}
+
+/// One thing that went wrong, with everything needed to act on it.
+#[derive(Clone, Debug, Serialize)]
+pub struct Failure {
+    /// The scenario or test that failed.
+    pub test: String,
+
+    /// The requirement it puts in doubt.
+    pub requirement: String,
+
+    /// Where that requirement lives in `SPEC.md`.
+    pub spec: String,
+
+    /// One command that reproduces this exactly.
+    pub repro: String,
+
+    /// What differed.
+    pub diff: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Report {
     pub tier: String,
     pub started: u64,
-    pub checks: Vec<CheckResult>,
+    pub duration_s: u64,
     pub result: Status,
+    pub requirements: Requirements,
+    pub checks: Vec<CheckResult>,
+    pub failures: Vec<Failure>,
 }
 
 impl Report {
@@ -60,9 +94,20 @@ impl Report {
         Self {
             tier: tier.to_string(),
             started: seconds_since_epoch(),
-            checks: Vec::new(),
+            duration_s: 0,
             result: Status::Passed,
+            requirements: Requirements::default(),
+            checks: Vec::new(),
+            failures: Vec::new(),
         }
+    }
+
+    pub fn record(&mut self, requirements: Requirements) {
+        self.requirements = requirements;
+    }
+
+    pub fn blame(&mut self, failures: Vec<Failure>) {
+        self.failures.extend(failures);
     }
 
     pub fn add(&mut self, check: CheckResult) {
@@ -76,7 +121,9 @@ impl Report {
         self.result != Status::Failed
     }
 
-    pub fn finish(&self, directory: &Path) -> Result<(), String> {
+    pub fn finish(&mut self, directory: &Path) -> Result<(), String> {
+        self.duration_s = seconds_since_epoch().saturating_sub(self.started);
+
         std::fs::create_dir_all(directory)
             .map_err(|error| format!("cannot create {}: {error}", directory.display()))?;
 
@@ -104,6 +151,13 @@ impl Report {
         );
         for check in &failed {
             println!("  {} failed: {}", check.name, check.detail);
+        }
+        for failure in &self.failures {
+            println!(
+                "  {} violates {} ({}): {}",
+                failure.test, failure.requirement, failure.spec, failure.diff
+            );
+            println!("    reproduce with: {}", failure.repro);
         }
         println!("report written to {}", path.display());
     }

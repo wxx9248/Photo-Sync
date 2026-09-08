@@ -1,9 +1,11 @@
 //! The tiers, and what each one runs.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::cli::Tier;
-use crate::report::{CheckResult, Report};
+use crate::report::{CheckResult, Failure, Report, Requirements};
+use crate::requirements::Registry;
 use crate::{coverage, scenario, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
@@ -39,9 +41,13 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.add(formatting(&desktop)?);
     report.add(lints(&desktop)?);
     report.add(unit_tests(&desktop)?);
-    report.add(scenarios(root)?);
+    let (check, failures) = scenarios(root)?;
+    report.add(check);
+    report.blame(failures);
+
     report.add(specification(root)?);
     report.add(requirement_matrix(root)?);
+    report.record(requirement_summary(root)?);
 
     if matches!(tier, Tier::Full | Tier::Nightly) {
         report.add(CheckResult::skipped(
@@ -115,12 +121,15 @@ fn unit_tests(desktop: &Path) -> Result<CheckResult, String> {
     ))
 }
 
-fn scenarios(root: &Path) -> Result<CheckResult, String> {
+fn scenarios(root: &Path) -> Result<(CheckResult, Vec<Failure>), String> {
     let outcomes = scenario::run_all(&workspace::scenarios_directory(root))?;
     if outcomes.is_empty() {
-        return Ok(CheckResult::skipped(
-            "scenarios",
-            "none are written yet, see docs/VERIFICATION.md",
+        return Ok((
+            CheckResult::skipped(
+                "scenarios",
+                "none are written yet, see docs/VERIFICATION.md",
+            ),
+            Vec::new(),
         ));
     }
 
@@ -133,11 +142,55 @@ fn scenarios(root: &Path) -> Result<CheckResult, String> {
     }
 
     println!("scenarios: {} run, {} failed", outcomes.len(), failed.len());
-    Ok(CheckResult::from_outcome(
+    let check = CheckResult::from_outcome(
         "scenarios",
         failed.is_empty(),
         "an acceptance scenario did not hold",
-    ))
+    );
+    Ok((check, blame(root, &failed)?))
+}
+
+/// Turns failing scenarios into entries an agent can act on: the requirement each one puts in
+/// doubt, where that requirement lives in the specification, and one command to see it again.
+fn blame(root: &Path, failed: &[&scenario::Outcome]) -> Result<Vec<Failure>, String> {
+    let registry = Registry::load(&workspace::requirements_file(root))?;
+    let sections: BTreeMap<&str, &str> = registry
+        .requirements
+        .iter()
+        .map(|item| (item.id.as_str(), item.section.as_str()))
+        .collect();
+
+    let mut blamed = Vec::new();
+    for outcome in failed {
+        let diff = outcome.failures.join("; ");
+        for requirement in &outcome.covers {
+            blamed.push(Failure {
+                test: outcome.id.clone(),
+                requirement: requirement.clone(),
+                spec: sections
+                    .get(requirement.as_str())
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string),
+                repro: format!("./verify scenario {}", outcome.id),
+                diff: diff.clone(),
+            });
+        }
+    }
+    Ok(blamed)
+}
+
+fn requirement_summary(root: &Path) -> Result<Requirements, String> {
+    let matrix = coverage::build(root)?;
+    let unverified: Vec<String> = matrix
+        .unclaimed()
+        .iter()
+        .map(|requirement| requirement.id.clone())
+        .collect();
+
+    Ok(Requirements {
+        active: matrix.active.len(),
+        verified: matrix.active.len() - unverified.len(),
+        unverified,
+    })
 }
 
 fn specification(root: &Path) -> Result<CheckResult, String> {
