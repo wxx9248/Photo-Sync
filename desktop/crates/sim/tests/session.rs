@@ -59,6 +59,10 @@ fn upload_outcome(log: &[Effect]) -> UploadOutcome {
     panic!("no upload result was sent");
 }
 
+fn count(log: &[Effect], wanted: fn(&Effect) -> bool) -> usize {
+    log.iter().filter(|effect| wanted(effect)).count()
+}
+
 fn position_of(log: &[Effect], wanted: fn(&Effect) -> bool) -> usize {
     match log.iter().position(wanted) {
         Some(index) => index,
@@ -1222,6 +1226,14 @@ fn every_file_in_a_group_moves_before_the_group_is_marked_done() {
         .collect();
     assert_eq!(renames.len(), 2);
     assert!(renames.iter().all(|rename| *rename < marked));
+
+    // One group, so one barrier and one done-mark. A desktop that synced after each file
+    // would still pass the ordering above while doing the work twice and, worse, marking a
+    // group done before the rest of it had moved.
+    assert_eq!(count(&log, is_vault_sync), 1);
+    assert_eq!(count(&log, is_staging_sync), 1);
+    assert_eq!(count(&log, is_done_mark), 1);
+
     assert_eq!(sim.storage.vault().len(), 2);
     assert_eq!(sim.store.done_marks(&phone()), 2);
     assert!(!sim.storage.holds(first));
