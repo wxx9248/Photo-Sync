@@ -1,12 +1,18 @@
-//! Files, as the desktop would find them.
+//! Files, as the desktop would find them, including after the power goes out.
 //!
-//! Staging and the vault are held in memory, contents and all, so a digest can be taken from
-//! what actually landed rather than from what was meant to. Nothing here fails on its own:
-//! faults are injected by the caller, which keeps this a model of storage rather than a model
-//! of storage going wrong.
+//! Two pictures are kept: what a reader sees now, and what a crash would leave behind. Every
+//! write lands in the first. What moves it into the second is exactly what moves it onto a
+//! disk in reality, and nothing else:
 //!
-//! Durability is recorded but not yet enforced. `durable` says how much of a file a sync has
-//! covered; discarding the rest at a crash is milestone M2, described in `docs/ROADMAP.md`.
+//! * a file's bytes become durable when that file is synced;
+//! * a directory entry becomes durable when that directory is synced, which is what makes a
+//!   creation, a rename, or a deletion survive;
+//! * a crash discards everything the second picture does not hold.
+//!
+//! This is the whole reason `SPEC.md` §7.3 syncs both directories before it writes a
+//! done-mark, and §7.6 truncates a partial back to its watermark. A simulator that made a
+//! write durable the moment it happened would agree with the implementation about everything
+//! and prove nothing.
 
 use std::collections::BTreeMap;
 
@@ -15,25 +21,38 @@ use photo_sync_core::id::{DeviceId, FileId, Timestamp, VaultName};
 use photo_sync_core::naming;
 
 /// One file in a device's staging directory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StagedFile {
     pub device: DeviceId,
     pub bytes: Vec<u8>,
-
-    /// Bytes a completed sync has made durable.
-    pub durable: u64,
 
     /// False while the file still carries the `.part` suffix that marks it unverified.
     pub finalized: bool,
 }
 
-#[derive(Debug, Default)]
-pub struct Storage {
+/// A whole filesystem at one instant.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Picture {
     staging: BTreeMap<FileId, StagedFile>,
     vault: BTreeMap<VaultName, Vec<u8>>,
+}
 
-    /// What the shell would read out of a file with these contents. Keyed by the bytes,
-    /// because a capture time is a property of the photograph and not of where it is kept.
+#[derive(Debug, Default)]
+pub struct Storage {
+    /// What a reader sees.
+    live: Picture,
+
+    /// What a power loss would leave behind.
+    durable: Picture,
+
+    /// Bytes a completed sync has made durable, whether or not the directory entry naming
+    /// them has. A file synced but never linked durably is a file a crash still loses.
+    synced: BTreeMap<FileId, Vec<u8>>,
+
+    /// The same for a file that has since been renamed into the vault.
+    synced_vault: BTreeMap<VaultName, Vec<u8>>,
+
+    /// What the shell would read out of a file with these contents.
     name_sources: BTreeMap<Vec<u8>, Vec<CivilTime>>,
 
     /// What it reads out of a file nothing was said about. A real shell finds a capture time
@@ -51,19 +70,19 @@ impl Storage {
     // ---- what the desktop asks for ----------------------------------------------------
 
     pub fn create(&mut self, device: &DeviceId, file: FileId) {
-        self.staging.insert(
+        self.live.staging.insert(
             file,
             StagedFile {
                 device: device.clone(),
                 bytes: Vec::new(),
-                durable: 0,
                 finalized: false,
             },
         );
+        self.synced.insert(file, Vec::new());
     }
 
     pub fn write_at(&mut self, file: FileId, offset: u64, data: &[u8]) {
-        let Some(staged) = self.staging.get_mut(&file) else {
+        let Some(staged) = self.live.staging.get_mut(&file) else {
             return;
         };
         let at = offset as usize;
@@ -74,54 +93,130 @@ impl Storage {
         staged.bytes.extend_from_slice(data);
     }
 
+    /// Makes this file's bytes durable. Its name is a separate question.
     pub fn sync_file(&mut self, file: FileId) {
-        if let Some(staged) = self.staging.get_mut(&file) {
-            staged.durable = staged.bytes.len() as u64;
+        let Some(staged) = self.live.staging.get(&file) else {
+            return;
+        };
+        let bytes = staged.bytes.clone();
+        self.synced.insert(file, bytes.clone());
+        if let Some(kept) = self.durable.staging.get_mut(&file) {
+            kept.bytes = bytes;
         }
     }
 
+    /// Makes a directory's entries durable: which files it holds, and under which names.
+    pub fn sync_directory(&mut self, directory: &photo_sync_core::Directory) {
+        match directory {
+            photo_sync_core::Directory::Vault => self.sync_vault_directory(),
+            photo_sync_core::Directory::Staging { device } => self.sync_staging_directory(device),
+        }
+    }
+
+    fn sync_staging_directory(&mut self, device: &DeviceId) {
+        self.durable
+            .staging
+            .retain(|file, kept| kept.device != *device || self.live.staging.contains_key(file));
+
+        for (file, staged) in &self.live.staging {
+            if staged.device != *device {
+                continue;
+            }
+            self.durable.staging.insert(
+                *file,
+                StagedFile {
+                    device: staged.device.clone(),
+                    bytes: self.synced.get(file).cloned().unwrap_or_default(),
+                    finalized: staged.finalized,
+                },
+            );
+        }
+    }
+
+    fn sync_vault_directory(&mut self) {
+        self.durable
+            .vault
+            .retain(|name, _| self.live.vault.contains_key(name));
+        for name in self.live.vault.keys() {
+            let bytes = self.synced_vault.get(name).cloned().unwrap_or_default();
+            self.durable.vault.insert(name.clone(), bytes);
+        }
+    }
+
+    /// Cuts a file back, durably. The shell follows `set_len` with a sync, since a truncation
+    /// that a crash could undo would leave the torn tail §7.6 exists to remove.
     pub fn truncate(&mut self, file: FileId, length: u64) {
-        if let Some(staged) = self.staging.get_mut(&file) {
+        if let Some(staged) = self.live.staging.get_mut(&file) {
             staged.bytes.truncate(length as usize);
-            staged.durable = staged.durable.min(length);
+        }
+        if let Some(synced) = self.synced.get_mut(&file) {
+            synced.truncate(length as usize);
+        }
+        if let Some(kept) = self.durable.staging.get_mut(&file) {
+            kept.bytes.truncate(length as usize);
         }
     }
 
+    /// Strips the `.part` suffix. A rename inside one directory, durable when it is synced.
     pub fn finalize(&mut self, file: FileId) {
-        if let Some(staged) = self.staging.get_mut(&file) {
+        if let Some(staged) = self.live.staging.get_mut(&file) {
             staged.finalized = true;
         }
     }
 
     pub fn rename_into_vault(&mut self, file: FileId, name: &VaultName) {
-        if let Some(staged) = self.staging.remove(&file) {
-            self.vault.insert(name.clone(), staged.bytes);
-        }
+        let Some(staged) = self.live.staging.remove(&file) else {
+            return;
+        };
+        self.live.vault.insert(name.clone(), staged.bytes);
+        // The bytes were made durable while the file was in staging; the rename moves that
+        // fact along with the name. Both directories still have to be synced for either.
+        let synced = self.synced.remove(&file).unwrap_or_default();
+        self.synced_vault.insert(name.clone(), synced);
     }
 
     pub fn remove(&mut self, file: FileId) {
-        self.staging.remove(&file);
+        self.live.staging.remove(&file);
+        self.synced.remove(&file);
     }
 
     pub fn clear_staging(&mut self, device: &DeviceId) {
-        self.staging.retain(|_, staged| staged.device != *device);
+        self.live.staging.retain(|file, staged| {
+            let mine = staged.device == *device;
+            if mine {
+                self.synced.remove(file);
+            }
+            !mine
+        });
+    }
+
+    /// Everything the machine did not get around to writing down is gone.
+    pub fn crash(&mut self) {
+        self.live = self.durable.clone();
+        self.synced
+            .retain(|file, _| self.durable.staging.contains_key(file));
+        for (file, staged) in &self.durable.staging {
+            self.synced.insert(*file, staged.bytes.clone());
+        }
+        self.synced_vault
+            .retain(|name, _| self.durable.vault.contains_key(name));
     }
 
     #[must_use]
     pub fn stat_vault(&self, name: &VaultName) -> Option<u64> {
-        self.vault.get(name).map(|bytes| bytes.len() as u64)
+        self.live.vault.get(name).map(|bytes| bytes.len() as u64)
     }
 
     #[must_use]
     pub fn holds(&self, file: FileId) -> bool {
-        self.staging.contains_key(&file)
+        self.live.staging.contains_key(&file)
     }
 
     /// The readings a vault name may be built from, in the order `SPEC.md` §7.2 tries them:
     /// what the photograph says about itself, and then when it was last modified.
     #[must_use]
     pub fn name_sources(&self, file: FileId, mtime: Timestamp) -> Vec<CivilTime> {
-        let Some(staged) = self.staging.get(&file) else {
+        let Some(staged) = self.live.staging.get(&file) else {
             return Vec::new();
         };
         let mut sources = self
@@ -145,23 +240,230 @@ impl Storage {
         self.default_name_sources = sources;
     }
 
-    /// Puts a file in the vault, as an earlier session would have left it.
+    /// Puts a file in the vault, durably, as an earlier session would have left it.
     pub fn put_in_vault(&mut self, name: &VaultName, bytes: Vec<u8>) {
-        self.vault.insert(name.clone(), bytes);
+        self.live.vault.insert(name.clone(), bytes.clone());
+        self.synced_vault.insert(name.clone(), bytes.clone());
+        self.durable.vault.insert(name.clone(), bytes);
     }
 
     /// Takes a file out of the vault, as a person curating it would.
     pub fn curate(&mut self, name: &VaultName) {
-        self.vault.remove(name);
+        self.live.vault.remove(name);
+        self.durable.vault.remove(name);
+        self.synced_vault.remove(name);
     }
 
     #[must_use]
     pub fn vault(&self) -> &BTreeMap<VaultName, Vec<u8>> {
-        &self.vault
+        &self.live.vault
     }
 
     #[must_use]
     pub fn staging(&self) -> &BTreeMap<FileId, StagedFile> {
-        &self.staging
+        &self.live.staging
+    }
+
+    /// What a crash right now would leave in the vault. Only a test looks at this.
+    #[must_use]
+    pub fn durable_vault(&self) -> &BTreeMap<VaultName, Vec<u8>> {
+        &self.durable.vault
+    }
+
+    /// What a crash right now would leave in staging.
+    #[must_use]
+    pub fn durable_staging(&self) -> &BTreeMap<FileId, StagedFile> {
+        &self.durable.staging
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use photo_sync_core::Directory;
+
+    fn phone() -> DeviceId {
+        DeviceId::new("phone-a")
+    }
+
+    fn staging() -> Directory {
+        Directory::Staging { device: phone() }
+    }
+
+    fn written(storage: &mut Storage, file: FileId, bytes: &[u8]) {
+        storage.create(&phone(), file);
+        storage.write_at(file, 0, bytes);
+    }
+
+    #[test]
+    fn a_write_alone_does_not_survive() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+
+        storage.crash();
+
+        assert!(!storage.holds(FileId(1)));
+    }
+
+    #[test]
+    fn a_file_synced_but_never_linked_does_not_survive() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+
+        // Syncing a file makes its bytes durable and says nothing about its name.
+        storage.sync_file(FileId(1));
+        storage.crash();
+
+        assert!(!storage.holds(FileId(1)));
+    }
+
+    #[test]
+    fn a_file_survives_once_both_it_and_its_directory_are_synced() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+        storage.crash();
+
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(b"one photograph".to_vec())
+        );
+    }
+
+    #[test]
+    fn bytes_written_after_the_last_sync_are_the_ones_lost() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"half a");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+
+        storage.write_at(FileId(1), 6, b" photograph");
+        storage.crash();
+
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(b"half a".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_directory_synced_before_the_file_leaves_the_name_without_the_bytes() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+
+        // The trap SPEC.md §7.6 is written against: a name can outlive its contents.
+        storage.sync_directory(&staging());
+        storage.crash();
+
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_rename_into_the_vault_needs_both_directories_synced() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+        let name = VaultName::new("2026-08-01_123456.jpg");
+
+        storage.rename_into_vault(FileId(1), &name);
+        storage.crash();
+
+        // Neither directory was synced after the rename, so it did not happen.
+        assert!(storage.vault().is_empty());
+        assert!(storage.holds(FileId(1)));
+    }
+
+    #[test]
+    fn a_rename_survives_once_both_directories_are_synced() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+        let name = VaultName::new("2026-08-01_123456.jpg");
+
+        storage.rename_into_vault(FileId(1), &name);
+        storage.sync_directory(&Directory::Vault);
+        storage.sync_directory(&staging());
+        storage.crash();
+
+        assert_eq!(
+            storage.vault().get(&name),
+            Some(&b"one photograph".to_vec())
+        );
+        assert!(!storage.holds(FileId(1)));
+    }
+
+    #[test]
+    fn a_deletion_that_was_not_synced_comes_back() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+
+        storage.remove(FileId(1));
+        storage.crash();
+
+        assert!(storage.holds(FileId(1)));
+    }
+
+    #[test]
+    fn a_truncation_is_durable_because_the_shell_syncs_it() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+
+        storage.truncate(FileId(1), 3);
+        storage.crash();
+
+        assert_eq!(
+            storage
+                .staging()
+                .get(&FileId(1))
+                .map(|file| file.bytes.clone()),
+            Some(b"one".to_vec())
+        );
+    }
+
+    #[test]
+    fn stripping_the_suffix_needs_its_directory_synced_too() {
+        let mut storage = Storage::new();
+        written(&mut storage, FileId(1), b"one photograph");
+        storage.sync_file(FileId(1));
+        storage.sync_directory(&staging());
+
+        storage.finalize(FileId(1));
+        storage.crash();
+
+        assert_eq!(
+            storage.staging().get(&FileId(1)).map(|file| file.finalized),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_vault_a_test_puts_files_in_is_already_durable() {
+        let mut storage = Storage::new();
+        let name = VaultName::new("2020-01-01_000000.jpg");
+        storage.put_in_vault(&name, b"an older photograph".to_vec());
+
+        storage.crash();
+
+        assert_eq!(storage.stat_vault(&name), Some(19));
     }
 }

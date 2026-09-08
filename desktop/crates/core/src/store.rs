@@ -9,6 +9,13 @@ use crate::naming::CivilTime;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreRequest {
+    /// Which devices have anything in staging at all.
+    ///
+    /// Read at startup. Manifests are per device, so without this a desktop coming back up
+    /// cannot find the partials `SPEC.md` §7.6 tells it to cut back, nor the write-logs §7.4
+    /// tells it to replay: it would only ever learn about a device that connected again.
+    ListStagingDevices,
+
     /// Everything staging holds for a device, used by the diff and by startup recovery.
     ListStagingEntries {
         device: DeviceId,
@@ -107,6 +114,7 @@ pub enum StoreRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreResponse {
     Done,
+    Devices(Vec<DeviceId>),
     HighestStagingFileId(Option<FileId>),
     StagingEntries(Vec<StagingEntry>),
     CommitPlan(Option<Vec<PlanEntry>>),

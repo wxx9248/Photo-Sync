@@ -12,7 +12,7 @@ use photo_sync_core::event::{Event, StorageOutcome};
 use photo_sync_core::id::DeviceId;
 use photo_sync_core::port::StorageError;
 use photo_sync_core::store::{StagingEntry, StoreError, StoreRequest};
-use photo_sync_core::{Desktop, Directory, Moment};
+use photo_sync_core::{Desktop, Moment};
 
 use crate::storage::Storage;
 use crate::store::Store;
@@ -68,6 +68,23 @@ impl Simulation {
     pub fn start(&mut self) {
         let at = self.now.at;
         self.deliver(Event::Started { now: at });
+    }
+
+    /// The power goes out, and the machine comes back.
+    ///
+    /// Everything the filesystem had not been told to write down is lost. The databases are
+    /// not: `STACK.md` §3.5 runs both in WAL mode with `synchronous=FULL`, so a transaction
+    /// that returned survived, and one that did not never existed. Modelling a crash inside
+    /// SQLite's own writing needs the virtual file system that milestone M2 also calls for,
+    /// and until it lands this is the more forgiving assumption of the two.
+    ///
+    /// Everything the core held in memory is gone, which is the point: what the desktop knows
+    /// afterwards is only what it wrote down.
+    pub fn restart(&mut self) {
+        self.storage.crash();
+        self.desktop = Desktop::new();
+        self.log.clear();
+        self.start();
     }
 
     /// Delivers one event and performs everything it leads to.
@@ -149,9 +166,7 @@ impl Simulation {
                 Some(done(*op))
             }
             Effect::SyncDirectory { op, directory } => {
-                // Directory entries are durable the moment they are made here. Modelling the
-                // gap between a rename and its parent's sync is milestone M2.
-                let _ = directory_of(directory);
+                self.storage.sync_directory(directory);
                 Some(done(*op))
             }
             Effect::TruncateFile { op, file, length } => {
@@ -236,13 +251,6 @@ impl Simulation {
 
     fn answer(&mut self, request: &StoreRequest) -> photo_sync_core::store::StoreResponse {
         self.store.run(request)
-    }
-}
-
-fn directory_of(directory: &Directory) -> &'static str {
-    match directory {
-        Directory::Vault => "vault",
-        Directory::Staging { .. } => "staging",
     }
 }
 

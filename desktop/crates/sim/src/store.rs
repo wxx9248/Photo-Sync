@@ -32,6 +32,15 @@ impl Store {
             StoreRequest::HighestStagingFileId => {
                 StoreResponse::HighestStagingFileId(self.manifest.keys().next_back().copied())
             }
+            StoreRequest::ListStagingDevices => {
+                let mut devices: Vec<DeviceId> = self
+                    .manifest
+                    .values()
+                    .map(|(device, _)| device.clone())
+                    .collect();
+                devices.dedup();
+                StoreResponse::Devices(devices)
+            }
             StoreRequest::ListStagingEntries { device } => StoreResponse::StagingEntries(
                 self.manifest
                     .values()

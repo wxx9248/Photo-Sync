@@ -126,6 +126,7 @@ impl Store {
     pub fn run(&mut self, request: &StoreRequest) -> Result<StoreResponse, StoreError> {
         match request {
             StoreRequest::HighestStagingFileId => self.highest_file_id(),
+            StoreRequest::ListStagingDevices => Ok(StoreResponse::Devices(self.devices())),
             StoreRequest::ListStagingEntries { device } => self.list_staging(device),
             StoreRequest::BeginStagingEntry { device, entry } => self.begin_entry(device, entry),
             StoreRequest::AdvanceWatermark {
@@ -164,6 +165,14 @@ impl Store {
         Ok(StoreResponse::HighestStagingFileId(
             self.owner.keys().next_back().copied(),
         ))
+    }
+
+    /// Which devices have a manifest at all, in a settled order.
+    fn devices(&self) -> Vec<DeviceId> {
+        let mut devices: Vec<DeviceId> = self.owner.values().cloned().collect();
+        devices.sort();
+        devices.dedup();
+        devices
     }
 
     fn list_staging(&mut self, device: &DeviceId) -> Result<StoreResponse, StoreError> {

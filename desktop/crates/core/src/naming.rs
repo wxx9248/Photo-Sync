@@ -307,6 +307,35 @@ mod tests {
         assert_eq!(civil_from_unix(951_868_800), at(2000, 3, 1, 0, 0, 0));
     }
 
+    /// The three corrections in the year arithmetic are the four-year rule, the hundred-year
+    /// exception to it, and the four-hundred-year exception to that. A date on the far side
+    /// of each is what tells them apart; dates near today agree whichever way they are
+    /// written.
+    #[test]
+    fn a_century_that_is_not_a_leap_year_reads_correctly() {
+        assert_eq!(civil_from_unix(4_107_542_400), at(2100, 3, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn a_century_that_is_one_reads_correctly() {
+        assert_eq!(civil_from_unix(13_574_563_200), at(2400, 2, 29, 0, 0, 0));
+    }
+
+    #[test]
+    fn a_date_before_the_epoch_reads_correctly() {
+        assert_eq!(civil_from_unix(-2_203_891_200), at(1900, 3, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn the_last_second_before_a_leap_year_reads_correctly() {
+        assert_eq!(civil_from_unix(-31_536_001), at(1968, 12, 31, 23, 59, 59));
+    }
+
+    #[test]
+    fn a_leap_day_soon_after_the_epoch_reads_correctly() {
+        assert_eq!(civil_from_unix(68_212_800), at(1972, 2, 29, 12, 0, 0));
+    }
+
     #[test]
     fn a_stem_is_the_name_without_its_suffix_or_extension() {
         covers!("R-NAME-001");

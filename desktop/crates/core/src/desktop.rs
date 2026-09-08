@@ -18,7 +18,7 @@ use commit::{Answer, Running, Step};
 
 use crate::catalog::{Catalog, CatalogEntry};
 use crate::digest::RunningDigest;
-use crate::effect::{Effect, LogLevel, RejectReason, ToSend, UploadOutcome};
+use crate::effect::{Directory, Effect, LogLevel, RejectReason, ToSend, UploadOutcome};
 use crate::event::{Event, StorageOutcome};
 use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256};
 use crate::naming::CivilTime;
@@ -73,6 +73,16 @@ pub struct Desktop {
 #[derive(Debug)]
 enum Pending {
     SeedFileIds,
+
+    /// Startup recovery: which devices left anything in staging, and what each left.
+    RecoverDevices,
+    RecoverStaging {
+        device: DeviceId,
+    },
+    TruncatePartial {
+        file: FileId,
+        length: u64,
+    },
     ListStaging {
         device: DeviceId,
     },
@@ -254,12 +264,62 @@ impl Desktop {
         }
     }
 
+    /// `SPEC.md` says recovery runs before anything else is accepted. What it has to do
+    /// before a phone can be answered is cut every partial back to the bytes a sync proved
+    /// durable (§7.6): a crash can leave a file longer than that, and the tail past it is
+    /// whatever the disk happened to hold at the time.
     fn started(&mut self) -> Vec<Effect> {
-        let op = self.begin(Pending::SeedFileIds);
-        vec![Effect::Store {
-            op,
-            request: StoreRequest::HighestStagingFileId,
-        }]
+        let seed = self.begin(Pending::SeedFileIds);
+        let devices = self.begin(Pending::RecoverDevices);
+        vec![
+            Effect::Store {
+                op: seed,
+                request: StoreRequest::HighestStagingFileId,
+            },
+            Effect::Store {
+                op: devices,
+                request: StoreRequest::ListStagingDevices,
+            },
+        ]
+    }
+
+    fn recover_devices(&mut self, devices: Vec<DeviceId>) -> Vec<Effect> {
+        devices
+            .into_iter()
+            .map(|device| {
+                let op = self.begin(Pending::RecoverStaging {
+                    device: device.clone(),
+                });
+                Effect::Store {
+                    op,
+                    request: StoreRequest::ListStagingEntries { device },
+                }
+            })
+            .collect()
+    }
+
+    /// Cuts each of one device's partials back to its watermark.
+    ///
+    /// A verified entry is left alone: its digest already matched, so its bytes are the ones
+    /// that were checked. The file's own length is never used as the offset, which is the
+    /// whole point of §7.6, because a buffered write can leave a file longer than what
+    /// survived the power going out.
+    fn recover_staging(&mut self, entries: &[StagingEntry]) -> Vec<Effect> {
+        entries
+            .iter()
+            .filter(|entry| !entry.is_verified())
+            .map(|entry| {
+                let op = self.begin(Pending::TruncatePartial {
+                    file: entry.file,
+                    length: entry.durable_bytes,
+                });
+                Effect::TruncateFile {
+                    op,
+                    file: entry.file,
+                    length: entry.durable_bytes,
+                }
+            })
+            .collect()
     }
 
     fn begin(&mut self, pending: Pending) -> OpId {
@@ -621,6 +681,13 @@ impl Desktop {
             device: device.clone(),
             file,
         });
+        // The directory is synced so the new file's name outlives a power loss. Without that
+        // the file itself does not, and §7.6's watermark would have nothing to cut back: a
+        // partial would simply be gone, and every interrupted transfer would start again.
+        let link = self.begin(Pending::CreateFile {
+            device: device.clone(),
+            file,
+        });
         vec![
             Effect::Store {
                 op: begin,
@@ -633,6 +700,12 @@ impl Desktop {
                 op: create,
                 device: device.clone(),
                 file,
+            },
+            Effect::SyncDirectory {
+                op: link,
+                directory: Directory::Staging {
+                    device: device.clone(),
+                },
             },
         ]
     }
@@ -1021,6 +1094,11 @@ impl Desktop {
                 self.record_verified(&device, file, digest, sources)
             }
             Pending::CreateFile { .. } | Pending::WriteChunk { .. } => Vec::new(),
+            Pending::TruncatePartial { file, length } => {
+                vec![info(format!(
+                    "{file:?} was cut back to its watermark of {length}"
+                ))]
+            }
             Pending::SyncFile(sync) => self.file_synced(sync),
             Pending::RemoveSuperseded { .. } | Pending::RemoveMismatched { .. } => Vec::new(),
             Pending::FinalizeFile {
@@ -1032,6 +1110,8 @@ impl Desktop {
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
             | Pending::NominationRows { .. }
+            | Pending::RecoverDevices
+            | Pending::RecoverStaging { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1086,10 +1166,20 @@ impl Desktop {
                     "the staged file for {file:?} was not removed: {error}"
                 ))]
             }
+            Pending::TruncatePartial { file, length } => {
+                // A partial that cannot be cut back is a partial nothing will resume from:
+                // the next commit drops a manifest row whose file is missing, and a diff
+                // offers no resume without a digest to continue.
+                vec![warn(format!(
+                    "{file:?} could not be cut back to {length}: {error}"
+                ))]
+            }
             other @ (Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
             | Pending::NominationRows { .. }
+            | Pending::RecoverDevices
+            | Pending::RecoverStaging { .. }
             | Pending::FreeSpace { .. }
             | Pending::DropSuperseded { .. }
             | Pending::BeginEntry { .. }
@@ -1124,6 +1214,21 @@ impl Desktop {
             },
             Pending::SeedFileIds => match response {
                 StoreResponse::HighestStagingFileId(highest) => self.seed_file_ids(highest),
+                other => vec![mismatched(&other)],
+            },
+            Pending::RecoverDevices => match response {
+                StoreResponse::Devices(devices) => self.recover_devices(devices),
+                other => vec![mismatched(&other)],
+            },
+            Pending::RecoverStaging { device } => match response {
+                StoreResponse::StagingEntries(entries) => {
+                    let mut effects = vec![info(format!(
+                        "{device} left {} entries in staging",
+                        entries.len()
+                    ))];
+                    effects.extend(self.recover_staging(&entries));
+                    effects
+                }
                 other => vec![mismatched(&other)],
             },
             Pending::ListStaging { device } => match response {
@@ -1164,6 +1269,7 @@ impl Desktop {
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
             | Pending::NominationStat { .. }
+            | Pending::TruncatePartial { .. }
             | Pending::FreeSpace { .. }) => {
                 vec![warn(format!("{other:?} was answered by the store"))]
             }
@@ -1192,11 +1298,14 @@ impl Desktop {
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
             | Pending::NominationStat { .. }
+            | Pending::TruncatePartial { .. }
             | Pending::FreeSpace { .. }
             | Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
             | Pending::NominationRows { .. }
+            | Pending::RecoverDevices
+            | Pending::RecoverStaging { .. }
             | Pending::DropSuperseded { .. }
             | Pending::DropMismatched { .. }) => {
                 vec![error_log(format!("{other:?} failed in the store: {error}"))]
