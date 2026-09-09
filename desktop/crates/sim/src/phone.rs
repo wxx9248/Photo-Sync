@@ -81,6 +81,11 @@ pub struct SessionOutcome {
 
 #[derive(Clone, Debug)]
 pub struct Phone {
+    /// A photograph the camera writes over once the diff has been answered, which is the
+    /// mid-session change `SPEC.md` §6.4 skips. Taken when it happens, so one arrangement
+    /// covers one session.
+    pub edit_after_diff: Option<(DevicePath, PhoneFile)>,
+
     pub device: DeviceId,
     pub name: String,
     pub files: BTreeMap<DevicePath, PhoneFile>,
@@ -93,6 +98,7 @@ impl Phone {
             device: DeviceId::new(device),
             name: name.to_string(),
             files: BTreeMap::new(),
+            edit_after_diff: None,
         }
     }
 
@@ -218,6 +224,12 @@ impl Phone {
             outcome.rejected = Some(reason);
             return outcome;
         }
+        // The camera writes over a photograph while the session is running. What the phone
+        // sends from here is the new one, and its header says so.
+        if let Some((path, replacement)) = self.edit_after_diff.take() {
+            self.files.insert(path, replacement);
+        }
+
         for wanted in to_send(&answered) {
             self.upload(sim, &wanted);
             outcome.uploaded.push(wanted.path.clone());

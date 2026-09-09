@@ -1660,3 +1660,26 @@ fn a_photograph_touched_since_the_catalog_was_taken_is_skipped() {
     assert_eq!(upload_outcome(&log), UploadOutcome::ChangedOnPhone);
     assert!(sim.store.staged(file).is_none());
 }
+
+#[test]
+fn nothing_is_kept_of_a_photograph_that_changed_while_it_was_being_sent() {
+    covers!("R-XFER-003");
+    let mut sim = fresh();
+    offer_one_photo(&mut sim);
+    let (to_send, _) = diff_of(&sim.take_log());
+    let file = to_send[0].file;
+
+    // The phone sends the whole of the new photograph and states a digest that covers it. It
+    // is honest about everything except which file this is, and that is enough to refuse it.
+    let edited = b"the bytes of one photograph, again".to_vec();
+    open_upload_of(&mut sim, file, 0, edited.len() as u64);
+    send_bytes(&mut sim, file, 0, &edited);
+    close_upload(&mut sim, file, digest_of(&edited));
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    assert!(
+        sim.storage.vault().is_empty(),
+        "a photograph nobody catalogued reached the vault"
+    );
+    assert!(sim.store.device_files().is_empty());
+}

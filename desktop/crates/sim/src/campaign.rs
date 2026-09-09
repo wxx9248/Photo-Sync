@@ -47,6 +47,10 @@ pub enum Op {
     /// same content twice and the only way the deduplication of §7.3 is ever reached.
     Copy(u8, u8),
 
+    /// The camera writes over a photograph after the desktop has answered the diff, so the
+    /// file that arrives is not the one the session agreed to take.
+    EditWhileSending(u8),
+
     /// The phone syncs.
     Sync,
 
@@ -68,6 +72,7 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
     let one = prop_oneof![
         6 => (0u8..6).prop_map(Op::Photograph),
         2 => (0u8..6).prop_map(Op::Edit),
+        2 => (0u8..6).prop_map(Op::EditWhileSending),
         3 => ((0u8..6), (0u8..6)).prop_map(|(from, to)| Op::Copy(from, to)),
         6 => Just(Op::Sync),
         2 => Just(Op::Restart),
@@ -173,6 +178,18 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
                 {
                     phone.files.insert(path_for(*to), held);
                 }
+            }
+            Op::EditWhileSending(which) => {
+                let path = path_for(*which);
+                if phone.files.contains_key(&path) {
+                    generation = generation.wrapping_add(1);
+                    phone.edit_after_diff = Some((
+                        path,
+                        PhoneFile::new(mtime_for(*which, generation), contents(*which, generation)),
+                    ));
+                }
+                phone.run_session(&mut sim);
+                phone.edit_after_diff = None;
             }
             Op::Sync => {
                 phone.run_session(&mut sim);
