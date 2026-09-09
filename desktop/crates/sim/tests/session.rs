@@ -1877,8 +1877,9 @@ fn a_stranded_photograph_is_sent_again_once_its_row_is_dropped() {
     // A row that matches what the phone holds. §7.5 calls this the stranded case: the diff
     // keeps calling the file imported and the deletion gate keeps refusing to free it, so
     // the photograph is never backed up and never let go of either.
-    sim.store
-        .remember_import(indexed_row(PHOTO.len() as u64, MTIME));
+    // Seeded in both accounts at once, because the model has to have the same history the
+    // desktop was given for its verdict to mean anything.
+    sim.remember_import(indexed_row(PHOTO.len() as u64, MTIME), None);
 
     offer_one_photo(&mut sim);
     let (to_send, summary) = diff_of(&sim.take_log());
@@ -1903,4 +1904,12 @@ fn a_stranded_photograph_is_sent_again_once_its_row_is_dropped() {
     let (to_send, summary) = diff_of(&sim.take_log());
     assert_eq!(to_send.len(), 1, "the photograph was still not asked for");
     assert_eq!(summary.already_imported, 0);
+
+    // The model was watching the same thing happen and agrees the row is gone.
+    if let Err(differences) = sim.agree() {
+        panic!(
+            "the desktop and the model disagree: {}",
+            differences.join("; ")
+        );
+    }
 }

@@ -181,6 +181,17 @@ impl Model {
             Event::DeletionsReported { device, .. } => {
                 self.at_risk.remove(device);
             }
+            // Somebody said this photograph was never really backed up. The row goes, and
+            // with it the expectation of one; the content stays, because the vault copy it
+            // names is still there and some other file may still stand for it.
+            Event::ForceReimportRequested { device, path } => {
+                self.expected
+                    .device_files
+                    .remove(&(device.clone(), path.clone()));
+                self.expected
+                    .undecided_files
+                    .remove(&(device.clone(), path.clone()));
+            }
             // A restart forgets what was in flight and nothing else. A file the desktop had
             // verified was written down before it said so, and the part of a file that had
             // reached the disk is still there to be carried on from.
@@ -193,7 +204,6 @@ impl Model {
             Event::PeerConnected { .. }
             | Event::PeerDisconnected { .. }
             | Event::DiffRequested { .. }
-            | Event::ForceReimportRequested { .. }
             | Event::TimerFired { .. }
             | Event::StorageOpCompleted { .. }
             | Event::StoreOpCompleted { .. }
