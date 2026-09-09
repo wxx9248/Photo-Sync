@@ -83,11 +83,10 @@ impl Desk {
                     }
                 }
             }
-            Event::PeerDisconnected { device } => {
-                if self.busy.ended(device) {
-                    // Dropping it is how the machine is told it may sleep again.
-                    self.inhibition = None;
-                }
+            // Dropping it is how the machine is told it may sleep again, and the last phone
+            // to leave is what drops it.
+            Event::PeerDisconnected { device } if self.busy.ended(device) => {
+                self.inhibition = None;
             }
             _ => {}
         }
