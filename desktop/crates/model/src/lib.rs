@@ -31,6 +31,17 @@ pub struct Expected {
 
     /// What each file on each phone was recorded as.
     pub device_files: BTreeMap<(DeviceId, DevicePath), Recorded>,
+
+    /// Content, and the rows naming it, that a power loss left undecided.
+    ///
+    /// A commit the power interrupted either finished or did not, and `SPEC.md` §7.4 makes
+    /// both outcomes safe: a sealed write-log is replayed at startup, an unsealed one is
+    /// discarded and its batch waits for the next commit. The phone cannot tell which
+    /// happened, so neither can this. Anything named here is neither required nor forbidden
+    /// until the next commit settles it, at which point it is checked as strictly as
+    /// anything else.
+    pub undecided: BTreeSet<Sha256>,
+    pub undecided_files: BTreeSet<(DeviceId, DevicePath)>,
 }
 
 /// The row a committed file leaves behind, minus the parts naming decides.
@@ -87,6 +98,15 @@ pub struct Model {
     /// Files that arrived whole and are waiting for a finish signal. These outlive a power
     /// loss, because a desktop that verified a file wrote that down before saying so.
     staged: BTreeMap<DeviceId, Vec<Staged>>,
+
+    /// The batch each device asked to have committed, kept until the phone has seen it
+    /// through. The phone's own evidence that it did is the deletion candidates coming back,
+    /// since `SPEC.md` §6.6 derives those from the commit that just happened.
+    ///
+    /// What this does not distinguish is a commit that halted part-way, which also leaves
+    /// the phone nothing to delete. Nothing a campaign can arrange halts one today; the day
+    /// something does, this is the line to revisit.
+    at_risk: BTreeMap<DeviceId, Vec<Staged>>,
 
     expected: Expected,
 }
@@ -156,6 +176,11 @@ impl Model {
             Event::FinishRequested { device } | Event::ManualCommitRequested { device } => {
                 self.commit(device);
             }
+            // The phone has been given something to delete, so the commit it asked for
+            // finished. Nothing about that batch is in doubt any more.
+            Event::DeletionsReported { device, .. } => {
+                self.at_risk.remove(device);
+            }
             // A restart forgets what was in flight and nothing else. A file the desktop had
             // verified was written down before it said so, and the part of a file that had
             // reached the disk is still there to be carried on from.
@@ -163,11 +188,11 @@ impl Model {
                 self.arriving.clear();
                 self.catalogs.clear();
                 self.refused.clear();
+                self.reopen_interrupted_commits();
             }
             Event::PeerConnected { .. }
             | Event::PeerDisconnected { .. }
             | Event::DiffRequested { .. }
-            | Event::DeletionsReported { .. }
             | Event::TimerFired { .. }
             | Event::StorageOpCompleted { .. }
             | Event::StoreOpCompleted { .. }
@@ -223,9 +248,19 @@ impl Model {
     /// Every file gets a row whether or not its content was new, because the row is what
     /// later says the phone may delete it.
     fn commit(&mut self, device: &DeviceId) {
-        for staged in self.staged.remove(device).unwrap_or_default() {
+        let batch = self.staged.remove(device).unwrap_or_default();
+        // Asking for the commit is what puts this batch in doubt: from here until the phone
+        // has seen it through, a power loss could leave it either side of §7.4.
+        self.at_risk.insert(device.clone(), batch.clone());
+
+        for staged in batch {
             // The file is whole and accounted for; nothing is left to carry on from.
             self.partials.remove(&(device.clone(), staged.path.clone()));
+            // Committing it again settles whatever an earlier power loss left open.
+            self.expected.undecided.remove(&staged.digest);
+            self.expected
+                .undecided_files
+                .remove(&(device.clone(), staged.path.clone()));
             if !self.expected.content.contains(&staged.digest) {
                 self.expected.vault.insert(staged.digest);
             }
@@ -238,6 +273,24 @@ impl Model {
                     mtime: staged.mtime,
                 },
             );
+        }
+    }
+
+    /// A commit the power cut short goes back in the queue and out of the reckoning.
+    ///
+    /// The batch becomes staged again, because that is where §7.4 leaves it when the
+    /// write-log was never sealed, and the next commit settles it either way. What it earned
+    /// stays in the expectation, since a commit that did finish before the power went is
+    /// still a commit; only the checking of it is suspended until something decides.
+    fn reopen_interrupted_commits(&mut self) {
+        for (device, batch) in std::mem::take(&mut self.at_risk) {
+            for staged in &batch {
+                self.expected.undecided.insert(staged.digest);
+                self.expected
+                    .undecided_files
+                    .insert((device.clone(), staged.path.clone()));
+            }
+            self.staged.entry(device).or_default().extend(batch);
         }
     }
 
