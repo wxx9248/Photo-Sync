@@ -554,3 +554,47 @@ impl wire::pairing_server::Pairing for PairingService {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Chunking carries one bit of real meaning: which message is the last one. The reader on
+    /// the other end waits for it, so getting it wrong is a session that never finishes.
+    fn split(count: usize) -> Vec<(usize, bool)> {
+        let entries: Vec<usize> = (0..count).collect();
+        into_chunks(entries, |taken, last| (taken.len(), last))
+    }
+
+    #[test]
+    fn nothing_to_send_is_still_one_message_and_it_is_the_last() {
+        assert_eq!(split(0), vec![(0, true)]);
+    }
+
+    #[test]
+    fn a_single_message_carries_everything_that_fits() {
+        assert_eq!(
+            split(ENTRIES_PER_MESSAGE),
+            vec![(ENTRIES_PER_MESSAGE, true)]
+        );
+    }
+
+    #[test]
+    fn one_more_than_fits_becomes_two_messages() {
+        assert_eq!(
+            split(ENTRIES_PER_MESSAGE + 1),
+            vec![(ENTRIES_PER_MESSAGE, false), (1, true)]
+        );
+    }
+
+    #[test]
+    fn only_the_final_message_says_so() {
+        let chunks = split(ENTRIES_PER_MESSAGE * 2 + 7);
+        let lasts: Vec<bool> = chunks.iter().map(|(_, last)| *last).collect();
+        assert_eq!(lasts, vec![false, false, true]);
+        assert_eq!(
+            chunks.iter().map(|(taken, _)| taken).sum::<usize>(),
+            ENTRIES_PER_MESSAGE * 2 + 7
+        );
+    }
+}

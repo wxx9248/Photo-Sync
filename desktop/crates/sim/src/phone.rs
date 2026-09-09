@@ -86,6 +86,11 @@ pub struct Phone {
     /// covers one session.
     pub edit_after_diff: Option<(DevicePath, PhoneFile)>,
 
+    /// The same, between the desktop offering a photograph for deletion and the phone
+    /// deciding. This is what the two gates of `SPEC.md` §8 are for: what the desktop
+    /// verified is not necessarily what is on the phone by the time it is asked to let go.
+    pub edit_before_deleting: Option<(DevicePath, PhoneFile)>,
+
     pub device: DeviceId,
     pub name: String,
     pub files: BTreeMap<DevicePath, PhoneFile>,
@@ -99,6 +104,7 @@ impl Phone {
             name: name.to_string(),
             files: BTreeMap::new(),
             edit_after_diff: None,
+            edit_before_deleting: None,
         }
     }
 
@@ -251,6 +257,11 @@ impl Phone {
         });
         let finished = sim.take_log();
         outcome.offered = candidates(&finished);
+
+        // The camera writes over a photograph between the offer and the answer.
+        if let Some((path, replacement)) = self.edit_before_deleting.take() {
+            self.files.insert(path, replacement);
+        }
 
         let outcomes = self.decide(&outcome.offered);
         for reported in &outcomes {

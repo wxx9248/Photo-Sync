@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as each milestone goes. M4 is closed.
+Written at the close of milestone M1, and added to as each milestone goes. M5 is closed.
 
 ## 1. Run these once
 
@@ -258,3 +258,34 @@ the intruding file instead. Two things follow, and both are yours to decide:
   file — is built and tested.
 * The throughput question from §8 above still stands, and now matters slightly more: crash
   recovery reads every unverified partial back at startup.
+
+## 10. What M5 changed
+
+M5 closed. Eight of the ten `R-DELETE-*` requirements are active and verified, and scenario
+`S-DELETE-001` — a curated vault copy is never nominated — runs in simulation and against the
+real stack, which is the exit M5 names.
+
+Most of §8 was already built and already checked. What was missing was the moment the protocol
+exists for: a photograph changing between the desktop offering it and the phone letting go of
+it. The simulated phone can now be told to write over a file at exactly that point, so both
+gates are exercised rather than assumed:
+
+* a photograph committed this session, whose size or time changed, is kept and reported;
+* one from an earlier session whose **bytes** changed while its size and time stayed the same
+  is kept, which only the re-hash can catch. That is the case the cheap gate would wave
+  through, and it is now the test that says the expensive one is worth its cost.
+
+The campaign can also write over a photograph before the prompt, so those gates meet crashes
+and restarts rather than only the two arrangements above.
+
+`into_chunks`, which cuts the diff and the candidate list into messages, now has unit tests.
+It carries one bit of real meaning — which message is the last — and the reader on the other
+end waits for it, so an off-by-one there is a session that never finishes. Reaching that path
+end to end would need a thousand-photograph library; the function is pure, so it is tested
+directly instead.
+
+### Left for M8
+
+`R-DELETE-005` (the phone shows one prompt) and `R-DELETE-009` (`MediaStore.createDeleteRequest`,
+silent under `MANAGE_MEDIA`) are the phone's own doing. Nothing on the desktop can observe
+either, so they stay deferred rather than being claimed here.

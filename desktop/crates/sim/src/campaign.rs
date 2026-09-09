@@ -51,6 +51,10 @@ pub enum Op {
     /// file that arrives is not the one the session agreed to take.
     EditWhileSending(u8),
 
+    /// The camera writes over a photograph after the desktop has offered it for deletion,
+    /// which is what the two gates of `SPEC.md` §8 stand between.
+    EditBeforeDeleting(u8),
+
     /// The phone syncs.
     Sync,
 
@@ -74,6 +78,7 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
         6 => (0u8..6).prop_map(Op::Photograph),
         2 => (0u8..6).prop_map(Op::Edit),
         2 => (0u8..6).prop_map(Op::EditWhileSending),
+        2 => (0u8..6).prop_map(Op::EditBeforeDeleting),
         3 => ((0u8..6), (0u8..6)).prop_map(|(from, to)| Op::Copy(from, to)),
         6 => Just(Op::Sync),
         2 => Just(Op::Restart),
@@ -191,6 +196,18 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
                 }
                 phone.run_session(&mut sim);
                 phone.edit_after_diff = None;
+            }
+            Op::EditBeforeDeleting(which) => {
+                let path = path_for(*which);
+                if phone.files.contains_key(&path) {
+                    generation = generation.wrapping_add(1);
+                    phone.edit_before_deleting = Some((
+                        path,
+                        PhoneFile::new(mtime_for(*which, generation), contents(*which, generation)),
+                    ));
+                }
+                phone.run_session(&mut sim);
+                phone.edit_before_deleting = None;
             }
             Op::Sync => {
                 phone.run_session(&mut sim);

@@ -374,14 +374,14 @@ quote = "a **force re-import** action"
 id = "R-DELETE-001"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "the desktop derives deletion candidates **only from the current session's catalog**"
 
 [[requirement]]
 id = "R-DELETE-002"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "every catalog entry covered by the index **whose vault copy is verified present**"
 note = "The vault, not the index, is the source of truth for safely stored."
 
@@ -389,14 +389,14 @@ note = "The vault, not the index, is the source of truth for safely stored."
 id = "R-DELETE-003"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "a `stat()` of the recorded vault name checking existence and size, at nomination time"
 
 [[requirement]]
 id = "R-DELETE-004"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "Each candidate: `(device_path, expected_sha256, size, mtime)`."
 
 [[requirement]]
@@ -410,21 +410,21 @@ quote = "The phone shows **one prompt**"
 id = "R-DELETE-006"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "candidate **committed this session** → verify size + mtime unchanged"
 
 [[requirement]]
 id = "R-DELETE-007"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "**previously-imported** candidate → full local re-hash vs `expected_sha256`"
 
 [[requirement]]
 id = "R-DELETE-008"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "any mismatch → **keep the file**, report"
 
 [[requirement]]
@@ -438,7 +438,7 @@ quote = "Deletion uses `MediaStore.createDeleteRequest`: **silent** when `MANAGE
 id = "R-DELETE-010"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "can only cause *under-deletion* — never a wrong deletion"
 
 [[requirement]]

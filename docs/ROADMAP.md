@@ -15,7 +15,7 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 through M4 are complete. The work in progress is **M5**.
+M0 through M5 are complete. The work in progress is **M6**.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -32,6 +32,13 @@ before the commit lock is released, which is what lets the next commit's map see
 phones that staged one photograph before either committed prove the behaviour. Inverting the
 rule needs two commits actually running against one another, so its negative control waits for
 the multi-device campaign in M6.
+
+M5 closed with two of the deletion requirements still deferred. `R-DELETE-005` is the single
+prompt the phone shows and `R-DELETE-009` is `MediaStore.createDeleteRequest`; both are things
+the phone does, and nothing on this end can see either. They close with M8. The desktop's half
+of both — the split between what this session committed and what an earlier one did, which the
+prompt is built from, and the candidate list the delete request works through — is active and
+verified.
 
 ### M0 Foundation
 

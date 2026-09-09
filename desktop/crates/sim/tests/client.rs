@@ -215,3 +215,128 @@ fn a_session_that_does_not_fit_is_turned_away_before_anything_moves() {
     assert!(sim.storage.vault().is_empty());
     assert_eq!(phone.files.len(), 1);
 }
+
+#[test]
+fn a_photograph_the_camera_wrote_over_before_the_prompt_is_kept() {
+    covers!("R-DELETE-006", "R-DELETE-008");
+    let mut sim = desktop();
+    let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, b"one photograph".to_vec()),
+    );
+
+    // It gets across and is committed this session, so the desktop offers it back with the
+    // cheap gate: its size and time were matched against content the desktop hash-verified.
+    // Then the camera writes over it before the phone answers.
+    phone.edit_before_deleting = Some((
+        path("IMG_0001.jpg"),
+        PhoneFile::new(MTIME + 60, b"a different photograph entirely".to_vec()),
+    ));
+
+    let outcome = phone.run_session(&mut sim);
+
+    assert_eq!(outcome.offered.len(), 1, "it was never offered");
+    assert!(
+        outcome.deleted.is_empty(),
+        "a changed photograph was deleted"
+    );
+    assert_eq!(outcome.kept, vec![path("IMG_0001.jpg")]);
+    assert_eq!(phone.files.len(), 1, "the phone let go of it anyway");
+
+    let summary = match outcome.summary {
+        Some(summary) => summary,
+        None => panic!("the session never closed"),
+    };
+    assert_eq!(summary.kept, 1, "the keep was not reported");
+    assert_eq!(summary.deleted, 0);
+
+    // The vault still holds what did arrive. Keeping a photograph on the phone says nothing
+    // about the copy that was already made.
+    assert_eq!(sim.storage.vault().len(), 1);
+}
+
+#[test]
+fn a_photograph_from_an_earlier_session_whose_bytes_changed_is_kept() {
+    covers!("R-DELETE-007", "R-DELETE-008");
+    let content = b"an older photograph".to_vec();
+    // Bytes that are not that photograph, at exactly the same length. Only the re-hash of
+    // §8's earlier-session gate can tell these apart: size and time say nothing.
+    let impostor = b"another photograph!".to_vec();
+    assert_eq!(content.len(), impostor.len());
+
+    let mut sim = desktop();
+    sim.storage
+        .put_in_vault(&VaultName::new("2026-08-01_120000.jpg"), content.clone());
+    sim.store.remember_import(DeviceFileRow {
+        device: photo_sync_core::DeviceId::new("phone-a"),
+        path: path("IMG_0001.jpg"),
+        size: content.len() as u64,
+        mtime: Timestamp(MTIME),
+        digest: digest_of(&content),
+        vault_name: VaultName::new("2026-08-01_120000.jpg"),
+        committed_at: Timestamp(MTIME),
+    });
+
+    let mut phone = Phone::new("phone-a", "Kitchen phone")
+        .holding("DCIM/Camera/IMG_0001.jpg", PhoneFile::new(MTIME, content));
+    phone.edit_before_deleting = Some((path("IMG_0001.jpg"), PhoneFile::new(MTIME, impostor)));
+
+    let outcome = phone.run_session(&mut sim);
+
+    assert_eq!(outcome.offered.len(), 1);
+    assert!(
+        outcome.deleted.is_empty(),
+        "a photograph whose bytes had changed was deleted on a size and time check"
+    );
+    assert_eq!(outcome.kept, vec![path("IMG_0001.jpg")]);
+    assert_eq!(phone.files.len(), 1);
+}
+
+#[test]
+fn a_candidate_says_whether_this_session_is_what_vouches_for_it() {
+    covers!("R-DELETE-004");
+    let earlier = b"an older photograph".to_vec();
+    let mut sim = desktop();
+    sim.storage
+        .put_in_vault(&VaultName::new("2026-08-01_120000.jpg"), earlier.clone());
+    sim.store.remember_import(DeviceFileRow {
+        device: photo_sync_core::DeviceId::new("phone-a"),
+        path: path("IMG_0002.jpg"),
+        size: earlier.len() as u64,
+        mtime: Timestamp(MTIME),
+        digest: digest_of(&earlier),
+        vault_name: VaultName::new("2026-08-01_120000.jpg"),
+        committed_at: Timestamp(MTIME),
+    });
+
+    let mut phone = Phone::new("phone-a", "Kitchen phone")
+        .holding(
+            "DCIM/Camera/IMG_0001.jpg",
+            PhoneFile::new(MTIME, b"a new photograph".to_vec()),
+        )
+        .holding("DCIM/Camera/IMG_0002.jpg", PhoneFile::new(MTIME, earlier));
+
+    let outcome = phone.run_session(&mut sim);
+
+    // Which gate a photograph faces is the desktop's to say, and the split is what the one
+    // prompt of §8 is built from. One came across just now; the other was already known.
+    assert_eq!(outcome.offered.len(), 2);
+    let origins: Vec<_> = outcome
+        .offered
+        .iter()
+        .map(|candidate| (candidate.path.clone(), candidate.origin))
+        .collect();
+    assert_eq!(
+        origins,
+        vec![
+            (
+                path("IMG_0001.jpg"),
+                photo_sync_core::effect::CandidateOrigin::ThisTransfer
+            ),
+            (
+                path("IMG_0002.jpg"),
+                photo_sync_core::effect::CandidateOrigin::Earlier
+            ),
+        ]
+    );
+}
