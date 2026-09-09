@@ -1581,3 +1581,27 @@ fn a_deletion_the_phone_could_not_carry_out_is_counted_as_failed() {
     assert_eq!(summary.deleted, 0);
     assert_eq!(summary.kept, 0);
 }
+
+#[test]
+fn the_vault_copy_carries_the_time_the_photograph_had_on_the_phone() {
+    covers!("R-XFER-002");
+    let mut sim = fresh();
+
+    offer_one_photo(&mut sim);
+    let (to_send, _) = diff_of(&sim.take_log());
+    let file = to_send[0].file;
+    open_upload(&mut sim, file, 0);
+    send_bytes(&mut sim, file, 0, PHOTO);
+    close_upload(&mut sim, file, digest_of(PHOTO));
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    // The catalog said when the photograph was last changed, and the copy in the vault says
+    // the same. A copy stamped with the moment it was imported would lose that.
+    let names: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
+    assert_eq!(names.len(), 1);
+    assert_eq!(
+        sim.storage.vault_mtime(&names[0]),
+        Some(Timestamp(MTIME)),
+        "the vault copy does not carry the phone's modification time"
+    );
+}

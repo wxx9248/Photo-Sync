@@ -80,6 +80,14 @@ pub enum Effect {
         mtime: Timestamp,
     },
 
+    /// Puts the phone's own modification time on a verified staging file, so the rename that
+    /// commits it carries that time into the vault. `SPEC.md` §6.4.
+    SetModifiedTime {
+        op: OpId,
+        file: FileId,
+        mtime: Timestamp,
+    },
+
     /// Renames a verified staging file from `<id>.part` to `<id>`. The suffix is what startup
     /// recovery uses to tell a partial apart from a file whose digest already matched, so
     /// stripping it is the moment a transfer stops being resumable and becomes committable.

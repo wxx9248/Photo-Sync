@@ -9,12 +9,12 @@
 //! filesystem, which is what makes it atomic and free of a transient second copy (§7.1).
 
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
+use std::fs::{File, FileTimes, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use photo_sync_core::effect::Directory;
-use photo_sync_core::id::{DeviceId, FileId, VaultName};
+use photo_sync_core::id::{DeviceId, FileId, Timestamp, VaultName};
 use photo_sync_core::port::{StorageError, VaultFileFacts};
 
 /// The suffix a staged file carries until its digest has matched. Startup recovery reads it
@@ -174,6 +174,23 @@ impl Storage {
         handle.sync_data().map_err(failure)
     }
 
+    /// Puts the phone's own modification time on a staged file, so the rename that commits
+    /// it carries that time into the vault. `SPEC.md` §6.4.
+    ///
+    /// # Errors
+    /// When the file is not staged here, or the filesystem refuses the change.
+    pub fn set_modified_time(
+        &mut self,
+        file: FileId,
+        mtime: Timestamp,
+    ) -> Result<(), StorageError> {
+        let path = self.staged_path(file)?;
+        let handle = File::options().write(true).open(&path).map_err(failure)?;
+        handle
+            .set_times(FileTimes::new().set_modified(instant_of(mtime)))
+            .map_err(failure)
+    }
+
     /// Strips the `.part` suffix now that the digest has matched.
     pub fn finalize_staging_file(&mut self, file: FileId) -> Result<(), StorageError> {
         let from = self.staged_path(file)?;
@@ -311,5 +328,17 @@ fn failure(error: std::io::Error) -> StorageError {
             StorageError::NoSpace
         }
         _ => StorageError::Failed(error.to_string()),
+    }
+}
+
+/// A whole-second timestamp as the filesystem wants it. Times before the epoch are as valid
+/// as any other: a photograph can be older than 1970 and still have a modification time.
+#[allow(clippy::disallowed_types)]
+fn instant_of(mtime: Timestamp) -> std::time::SystemTime {
+    let epoch = std::time::UNIX_EPOCH;
+    if mtime.0 >= 0 {
+        epoch + std::time::Duration::from_secs(mtime.0.unsigned_abs())
+    } else {
+        epoch - std::time::Duration::from_secs(mtime.0.unsigned_abs())
     }
 }

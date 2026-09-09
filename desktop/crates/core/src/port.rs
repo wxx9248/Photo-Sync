@@ -60,6 +60,9 @@ pub trait FileOps {
     /// Whether a staged file is still where the manifest says it is.
     fn stat_staging_file(&self, file: FileId) -> Result<bool, StorageError>;
 
+    /// Puts a modification time on a staged file.
+    fn set_modified_time(&self, file: FileId, mtime: Timestamp) -> Result<(), StorageError>;
+
     /// Reads part of a staged file back, for rebuilding a partial's digest.
     fn read_staged_range(
         &self,

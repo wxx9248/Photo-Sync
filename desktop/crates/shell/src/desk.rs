@@ -103,6 +103,10 @@ impl Desk {
                     mtime.0,
                 )])),
             }),
+            Effect::SetModifiedTime { op, file, mtime } => Some(storage_result(
+                *op,
+                self.storage.set_modified_time(*file, *mtime),
+            )),
             Effect::RenameIntoVault { op, file, name } => Some(storage_result(
                 *op,
                 self.storage.rename_into_vault(*file, name),

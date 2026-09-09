@@ -373,6 +373,13 @@ impl Simulation {
                 self.storage.clear_staging(device);
                 Some(done(*op))
             }
+            Effect::SetModifiedTime { op, file, mtime } => {
+                self.storage.set_modified_time(*file, *mtime);
+                Some(Event::StorageOpCompleted {
+                    op: *op,
+                    result: Ok(StorageOutcome::Done),
+                })
+            }
             Effect::ReadStagedRange {
                 op,
                 file,

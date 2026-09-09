@@ -153,6 +153,11 @@ enum Pending {
         file: FileId,
         digest: Sha256,
     },
+    ApplyMtime {
+        device: DeviceId,
+        file: FileId,
+        digest: Sha256,
+    },
     MarkVerified {
         device: DeviceId,
         file: FileId,
@@ -1133,6 +1138,21 @@ impl Desktop {
         file: FileId,
         digest: Sha256,
     ) -> Vec<Effect> {
+        // The mtime the catalog stated goes on before anything else, so the rename that
+        // commits the file carries the phone's own time into the vault. `SPEC.md` §6.4.
+        let Some(mtime) = self.upload(device, file).map(|upload| upload.mtime) else {
+            return self.record_verified(device, file, digest, Vec::new());
+        };
+        let op = self.begin(Pending::ApplyMtime {
+            device: device.clone(),
+            file,
+            digest,
+        });
+        vec![Effect::SetModifiedTime { op, file, mtime }]
+    }
+
+    /// The stored copy now carries the phone's time; naming it comes next.
+    fn mtime_applied(&mut self, device: &DeviceId, file: FileId, digest: Sha256) -> Vec<Effect> {
         let Some(mtime) = self.upload(device, file).map(|upload| upload.mtime) else {
             return self.record_verified(device, file, digest, Vec::new());
         };
@@ -1286,6 +1306,11 @@ impl Desktop {
                 file,
                 digest,
             } => self.staging_file_finalized(&device, file, digest),
+            Pending::ApplyMtime {
+                device,
+                file,
+                digest,
+            } => self.mtime_applied(&device, file, digest),
             other @ (Pending::SeedFileIds
             | Pending::ListStaging { .. }
             | Pending::LookupImported { .. }
@@ -1315,6 +1340,19 @@ impl Desktop {
                     row.vault_name
                 ))];
                 effects.extend(self.vault_copy_checked(&device, &row, None));
+                effects
+            }
+            Pending::ApplyMtime {
+                device,
+                file,
+                digest,
+            } => {
+                // A modification time is a detail of the copy, not the photograph. A file
+                // that would not take one is still the file the phone sent.
+                let mut effects = vec![warn(format!(
+                    "{file:?} would not take the phone's modification time: {error}"
+                ))];
+                effects.extend(self.mtime_applied(&device, file, digest));
                 effects
             }
             Pending::ReadNameSources {
@@ -1465,6 +1503,7 @@ impl Desktop {
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
+            | Pending::ApplyMtime { .. }
             | Pending::NominationStat { .. }
             | Pending::TruncatePartial { .. }
             | Pending::RebuildDigest { .. }
@@ -1495,6 +1534,7 @@ impl Desktop {
             | Pending::RemoveSuperseded { .. }
             | Pending::RemoveMismatched { .. }
             | Pending::ReadNameSources { .. }
+            | Pending::ApplyMtime { .. }
             | Pending::NominationStat { .. }
             | Pending::TruncatePartial { .. }
             | Pending::RebuildDigest { .. }

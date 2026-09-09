@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use photo_sync::storage::Storage;
 use photo_sync_core::covers;
 use photo_sync_core::effect::Directory;
-use photo_sync_core::id::{DeviceId, FileId, VaultName};
+use photo_sync_core::id::{DeviceId, FileId, Timestamp, VaultName};
 use photo_sync_core::port::StorageError;
 
 /// A directory of its own for each test, removed when the test ends.
@@ -244,4 +244,32 @@ fn both_directories_a_commit_syncs_can_be_synced() {
 
     expect(storage.sync_directory(&Directory::Vault));
     expect(storage.sync_directory(&Directory::Staging { device: phone() }));
+}
+
+#[test]
+fn a_staged_file_takes_the_time_the_phone_gave_it_into_the_vault() {
+    covers!("R-XFER-002");
+    let scratch = Scratch::new();
+    let mut storage = storage(&scratch);
+    expect(storage.create_staging_file(&phone(), FileId(1)));
+    expect(storage.write_at(FileId(1), 0, b"one photograph"));
+    expect(storage.finalize_staging_file(FileId(1)));
+
+    // A moment well before this test ran, so nothing could produce it by accident.
+    let taken = Timestamp(1_756_000_000);
+    expect(storage.set_modified_time(FileId(1), taken));
+
+    let name = VaultName::new("2025-08-24_014640.jpg");
+    expect(storage.rename_into_vault(FileId(1), &name));
+
+    let stored = scratch.vault().join(name.as_str());
+    let modified = match std::fs::metadata(&stored).and_then(|facts| facts.modified()) {
+        Ok(modified) => modified,
+        Err(error) => panic!("the vault copy has no modification time: {error}"),
+    };
+    let seconds = match modified.duration_since(std::time::UNIX_EPOCH) {
+        Ok(since) => since.as_secs(),
+        Err(error) => panic!("the vault copy is dated before the epoch: {error}"),
+    };
+    assert_eq!(seconds, taken.0.unsigned_abs());
 }

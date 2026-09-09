@@ -52,6 +52,14 @@ pub struct Storage {
     /// The same for a file that has since been renamed into the vault.
     synced_vault: BTreeMap<VaultName, Vec<u8>>,
 
+    /// Modification times put on staged files, and the ones they carried into the vault.
+    ///
+    /// These sit outside the durable picture on purpose. `SPEC.md` §6.4 asks for the phone's
+    /// time on the stored copy; it is a detail of the copy, not a claim about what survives,
+    /// and a crash that loses it costs nothing the specification promised.
+    mtimes: BTreeMap<FileId, Timestamp>,
+    vault_mtimes: BTreeMap<VaultName, Timestamp>,
+
     /// What the shell would read out of a file with these contents.
     name_sources: BTreeMap<Vec<u8>, Vec<CivilTime>>,
 
@@ -164,10 +172,27 @@ impl Storage {
         }
     }
 
+    /// Puts the phone's own modification time on a staged file. `SPEC.md` §6.4.
+    pub fn set_modified_time(&mut self, file: FileId, mtime: Timestamp) {
+        if self.live.staging.contains_key(&file) {
+            self.mtimes.insert(file, mtime);
+        }
+    }
+
+    /// The time the vault copy carries, which is the one its photograph had on the phone.
+    #[must_use]
+    pub fn vault_mtime(&self, name: &VaultName) -> Option<Timestamp> {
+        self.vault_mtimes.get(name).copied()
+    }
+
     pub fn rename_into_vault(&mut self, file: FileId, name: &VaultName) {
         let Some(staged) = self.live.staging.remove(&file) else {
             return;
         };
+        // The time travels with the file, the way a rename carries it on a real filesystem.
+        if let Some(mtime) = self.mtimes.remove(&file) {
+            self.vault_mtimes.insert(name.clone(), mtime);
+        }
         self.live.vault.insert(name.clone(), staged.bytes);
         // The bytes were made durable while the file was in staging; the rename moves that
         // fact along with the name. Both directories still have to be synced for either.
@@ -177,6 +202,7 @@ impl Storage {
 
     pub fn remove(&mut self, file: FileId) {
         self.live.staging.remove(&file);
+        self.mtimes.remove(&file);
         self.synced.remove(&file);
     }
 
@@ -185,6 +211,7 @@ impl Storage {
             let mine = staged.device == *device;
             if mine {
                 self.synced.remove(file);
+                self.mtimes.remove(file);
             }
             !mine
         });
