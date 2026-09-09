@@ -15,11 +15,17 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0, M1 and M2 are complete. The work in progress is **M3**.
+M0, M1, M2 and M3 are complete. The work in progress is **M4**.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
 three ways forward.
+
+M3 closed with four of the catalog requirements still deferred. `R-CATALOG-001`, `-002`, `-004`
+and `-005` are `SPEC.md` §3.2 — the `DCIM/Camera` bucket, `IS_PENDING`, the frozen snapshot,
+and no upfront hashing — which are things the phone does and nothing on the desktop can
+observe. They close with M8, where the Kotlin session core is written. `R-CATALOG-003`, the
+entry identity the desktop diffs against, is active and verified here.
 
 ### M0 Foundation
 

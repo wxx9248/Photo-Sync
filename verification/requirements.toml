@@ -26,7 +26,7 @@ quote = "Excluded: `IS_PENDING` items"
 id = "R-CATALOG-003"
 section = "§3.2"
 area = "CATALOG"
-status = "deferred"
+status = "active"
 quote = "Entry identity: **(relative path, size, mtime)**"
 
 [[requirement]]
@@ -48,35 +48,35 @@ quote = "No upfront hashing"
 id = "R-DIFF-001"
 section = "§6.2"
 area = "DIFF"
-status = "deferred"
+status = "active"
 quote = "**previously imported** — matches this device's index row on (path, size, mtime)"
 
 [[requirement]]
 id = "R-DIFF-002"
 section = "§6.2"
 area = "DIFF"
-status = "deferred"
+status = "active"
 quote = "**already staged** — matches a verified staging-manifest entry on (path, size, mtime)"
 
 [[requirement]]
 id = "R-DIFF-003"
 section = "§6.2"
 area = "DIFF"
-status = "deferred"
+status = "active"
 quote = "including a **resume offset** for any file with a partial `.part` in staging"
 
 [[requirement]]
 id = "R-DIFF-004"
 section = "§6.2"
 area = "DIFF"
-status = "deferred"
+status = "active"
 quote = "the partial is discarded and the file restarts from zero"
 
 [[requirement]]
 id = "R-DIFF-005"
 section = "§4"
 area = "DIFF"
-status = "deferred"
+status = "active"
 quote = "**Free-space check** against the diff's **to-send byte total**"
 
 [[requirement]]
@@ -90,28 +90,28 @@ quote = "Each file is streamed with its sha256 (computed on the fly)"
 id = "R-XFER-002"
 section = "§6.4"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "the catalog mtime accompanies the file and is applied to the stored copy"
 
 [[requirement]]
 id = "R-XFER-003"
 section = "§6.4"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "A file that changed on the phone mid-session (size/mtime mismatch at send time) is skipped and reported"
 
 [[requirement]]
 id = "R-XFER-004"
 section = "§6.5"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "Hash mismatch → delete the partial, one full re-transfer, then skip + report."
 
 [[requirement]]
 id = "R-XFER-005"
 section = "§6.5"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "A stream is bounded by the size its catalog entry declared."
 note = "Without a bound a phone decides how much staging space it takes."
 
@@ -119,7 +119,7 @@ note = "Without a bound a phone decides how much staging space it takes."
 id = "R-XFER-006"
 section = "§6.4"
 area = "XFER"
-status = "deferred"
+status = "active"
 quote = "Multiple concurrent file streams to utilize full bandwidth"
 note = "Each file keeps its own digest and its own watermark, so interleaved streams cannot spoil one another."
 
@@ -127,42 +127,42 @@ note = "Each file keeps its own digest and its own watermark, so interleaved str
 id = "R-STAGE-001"
 section = "§6.5"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "Desktop writes each stream into staging under a **manifest-assigned unique name**"
 
 [[requirement]]
 id = "R-STAGE-002"
 section = "§6.5"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "the older entry is superseded and its file removed"
 
 [[requirement]]
 id = "R-STAGE-003"
 section = "§6.5"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "It fsyncs, verifies the sha256 against the phone's digest, atomically renames to strip the suffix"
 
 [[requirement]]
 id = "R-STAGE-004"
 section = "§6.5"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "**All verified files are staged, duplicate content included.**"
 
 [[requirement]]
 id = "R-STAGE-005"
 section = "§7.6"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "the staging manifest records an in-progress entry"
 
 [[requirement]]
 id = "R-STAGE-006"
 section = "§7.6"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "after each fsync advances the watermark in the manifest (flushed)"
 
 [[requirement]]
@@ -177,21 +177,21 @@ note = "File size is not a safe offset: a buffered write can extend a file past 
 id = "R-STAGE-008"
 section = "§7.6"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "The resume offset reported in the diff (§6.2) is the watermark."
 
 [[requirement]]
 id = "R-STAGE-009"
 section = "§7.6"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "the desktop replays the existing prefix through its sha256 state"
 
 [[requirement]]
 id = "R-STAGE-010"
 section = "§7.1"
 area = "STAGE"
-status = "deferred"
+status = "active"
 quote = "Staging lives at **`<vault>/.staging/<deviceID>/`** — same filesystem as the vault"
 
 [[requirement]]

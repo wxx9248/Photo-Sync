@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as M2 goes.
+Written at the close of milestone M1, and added to as each milestone goes. M3 is closed.
 
 ## 1. Run these once
 
@@ -163,10 +163,49 @@ These are noted where the code makes them, not just here.
   modification time. Both `SPEC.md` §7.2 sources above it need `nom-exif`, and the conversion
   to local time needs a timezone database. They land together.
 * Every wall-clock reading is UTC for the same reason. Names are cosmetic, and §7.2 says so.
-* `R-XFER-002`, applying the phone's modification time to the stored copy, has no effect in the
-  vocabulary and is not done.
-* Resuming a partial across a desktop restart is refused rather than trusted: the desktop
-  cannot continue a digest it no longer holds, so it asks for the file again. `R-STAGE-009`
-  and M3 fix that.
 * A commit that halts part-way leaves the device locked until recovery replays its write-log,
   and recovery is M4. Nothing is lost, but that phone cannot sync again until then.
+
+## 8. What M3 changed, and what it leaves for a person
+
+M3 closed. `R-CATALOG-003`, every `R-DIFF-*`, every `R-XFER-*` and every `R-STAGE-*` are active
+and verified, and scenario `S-STAGE-001` covers an interrupted transfer carrying on from the
+desktop's watermark.
+
+Two of the changes were product defects rather than missing features, and both are worth
+knowing about.
+
+**A transfer never really resumed after a power loss.** The desktop kept each partial's digest
+in memory only, so a machine that came back had the bytes and no way to verify them: §7.6's
+resume offset was worth nothing and every interrupted file started again. The desktop now reads
+each partial back off its own disk, a megabyte at a time, before it answers a diff. **This costs
+one pass over every unverified partial at startup** — bounded by what was in flight when the
+power went, not by the size of the library. A partial that reads back short, or not at all,
+starts from zero rather than resuming onto bytes nothing verified.
+
+**The real server gathered a whole upload in memory** and handed it to the desktop only when
+the stream ended. Watermarks, partial files and resume all worked in the simulator and none of
+them had ever happened over a socket; a video larger than free memory would have taken the
+desktop down. Each message now goes across as it arrives. Nothing measures the cost of taking
+the desk lock per message rather than per file, and **a throughput measurement over a real
+network is worth doing before this ships** — it is the one change here whose price is not
+visible from inside the repository.
+
+### Left for M8, not skipped
+
+`R-CATALOG-001`, `-002`, `-004` and `-005` stay deferred. They are `SPEC.md` §3.2 — the
+`DCIM/Camera` bucket, `IS_PENDING` exclusion, the once-only frozen enumeration, and no upfront
+hashing — and they describe what the phone does. Nothing on the desktop can observe any of them,
+so activating them here would mean claiming a check that does not exist. They close with the
+Kotlin session core in M8. `R-CATALOG-003`, the `(path, size, mtime)` identity the desktop
+diffs against, is active and verified.
+
+### Still open from earlier milestones
+
+* The SQLite virtual file system of §5 above. Nothing changed there.
+* Capture-time extraction still needs `nom-exif` and a timezone database, so a vault name still
+  falls back to the modification time in UTC.
+* `S-STAGE-001` is checked in simulation only, because it takes the power away mid-transfer.
+  The real stack proves the half of it that a socket can: `a_transfer_cut_short_carries_on_from
+  _the_watermark_over_a_socket` sends part of a file, drops the stream, and finds those bytes on
+  the desktop's disk and offered back on the next diff.

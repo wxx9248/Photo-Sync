@@ -1636,6 +1636,16 @@ fn a_photograph_edited_since_the_catalog_was_taken_is_skipped() {
         sim.store.staged(file).is_none(),
         "a manifest entry was kept for a photograph nobody is sending"
     );
+
+    // `SPEC.md` §6.4 says skipped and reported, and the summary is where a person reads it.
+    sim.deliver(Event::FinishRequested { device: phone() });
+    sim.deliver(Event::DeletionsReported {
+        device: phone(),
+        outcomes: Vec::new(),
+    });
+    let summary = session_summary(&sim.take_log());
+    assert_eq!(summary.skipped, 1, "the session did not report the skip");
+    assert_eq!(summary.sent, 0);
 }
 
 #[test]
@@ -1750,4 +1760,35 @@ fn two_photographs_can_be_in_flight_at_once() {
         "the second photograph is not in the vault"
     );
     assert_eq!(sim.store.device_files().len(), 2);
+}
+
+#[test]
+fn a_photograph_the_index_knows_at_another_size_is_asked_for_again() {
+    covers!("R-CATALOG-003", "R-DIFF-001");
+    let mut sim = fresh();
+    // Same path, same moment, one byte shorter. An entry is the three fields together, so
+    // this row is about a different photograph and settles nothing about this one.
+    sim.store
+        .remember_import(indexed_row(PHOTO.len() as u64 - 1, MTIME));
+
+    offer_one_photo(&mut sim);
+
+    let (to_send, summary) = diff_of(&sim.take_log());
+    assert_eq!(to_send.len(), 1);
+    assert_eq!(summary.already_imported, 0);
+}
+
+#[test]
+fn a_photograph_the_index_knows_at_another_time_is_asked_for_again() {
+    covers!("R-CATALOG-003", "R-DIFF-001");
+    let mut sim = fresh();
+    // Same path, same length, a second later. Two photographs of one size are still two.
+    sim.store
+        .remember_import(indexed_row(PHOTO.len() as u64, MTIME + 1));
+
+    offer_one_photo(&mut sim);
+
+    let (to_send, summary) = diff_of(&sim.take_log());
+    assert_eq!(to_send.len(), 1);
+    assert_eq!(summary.already_imported, 0);
 }
