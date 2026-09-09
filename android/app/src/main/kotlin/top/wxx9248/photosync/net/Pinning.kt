@@ -41,19 +41,20 @@ class PinnedDesktop(private val expectedPin: String) : X509TrustManager {
 
 /** Presents this phone's keystore-resident key, which is how the desktop recognises it. */
 class DeviceKeyManager(private val identity: Identity) : X509ExtendedKeyManager() {
-    override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) = arrayOf(ALIAS)
+    override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) =
+        arrayOf(Identity.ALIAS)
 
     override fun chooseClientAlias(
         keyType: Array<out String>?,
         issuers: Array<out Principal>?,
         socket: Socket?,
-    ) = ALIAS
+    ) = Identity.ALIAS
 
     override fun chooseEngineClientAlias(
         keyType: Array<out String>?,
         issuers: Array<out Principal>?,
         engine: SSLEngine?,
-    ) = ALIAS
+    ) = Identity.ALIAS
 
     override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?) = null
 
@@ -70,8 +71,4 @@ class DeviceKeyManager(private val identity: Identity) : X509ExtendedKeyManager(
      * the platform does the signing behind that handle.
      */
     override fun getPrivateKey(alias: String?): PrivateKey = identity.privateKey
-
-    private companion object {
-        const val ALIAS = "photo-sync-device"
-    }
 }

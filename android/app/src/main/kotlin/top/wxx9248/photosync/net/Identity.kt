@@ -34,7 +34,9 @@ class Identity private constructor(
 
     companion object {
         private const val KEYSTORE = "AndroidKeyStore"
-        private const val ALIAS = "photo-sync-device"
+
+        /** The one name this phone's key is stored and asked for under. */
+        const val ALIAS: String = "photo-sync-device"
 
         /** Loads this phone's key, making one the first time. */
         fun loadOrCreate(): Identity {
