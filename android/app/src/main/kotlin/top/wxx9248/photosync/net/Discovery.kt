@@ -4,8 +4,13 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Finding the desktop on the local network. `SPEC.md` §5.1.
@@ -26,51 +31,69 @@ class Discovery(context: Context) {
      * something §5.1 handles: the phone is paired with one key, and connecting to the wrong
      * one fails the pinning check rather than doing anything worse.
      */
-    suspend fun find(timeoutMillis: Long = 10_000): InetSocketAddress? =
-        suspendCancellableCoroutine { waiting ->
-            var answered = false
-
-            val listener = object : NsdManager.DiscoveryListener {
-                override fun onDiscoveryStarted(serviceType: String?) = Unit
-                override fun onDiscoveryStopped(serviceType: String?) = Unit
-                override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
-                    if (!answered) {
-                        answered = true
-                        waiting.resume(null)
-                    }
-                }
-
-                override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) = Unit
-                override fun onServiceLost(service: NsdServiceInfo?) = Unit
-
-                override fun onServiceFound(service: NsdServiceInfo?) {
-                    val found = service ?: return
-                    manager.resolveService(
-                        found,
-                        object : NsdManager.ResolveListener {
-                            override fun onResolveFailed(info: NsdServiceInfo?, errorCode: Int) = Unit
-
-                            override fun onServiceResolved(info: NsdServiceInfo?) {
-                                val resolved = info ?: return
-                                val host = resolved.hostAddresses.firstOrNull() ?: return
-                                if (!answered) {
-                                    answered = true
-                                    waiting.resume(InetSocketAddress(host, resolved.port))
-                                }
-                            }
-                        },
-                    )
-                }
-            }
-
-            manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
-            waiting.invokeOnCancellation {
-                runCatching { manager.stopServiceDiscovery(listener) }
+    suspend fun find(timeout: Duration = LONG_ENOUGH): InetSocketAddress? =
+        withTimeoutOrNull(timeout) {
+            suspendCancellableCoroutine { waiting ->
+                val looking = FirstDesktop(waiting)
+                manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, looking)
+                waiting.invokeOnCancellation { looking.answer(null) }
             }
         }
+
+    /**
+     * One attempt: the first desktop that resolves, and nothing after it.
+     *
+     * NSD calls back on its own threads and keeps the radio looking until it is told to stop,
+     * so the first thread to reach an answer is the one that stops it. Every way out of a
+     * search goes through [answer]: an address, a discovery that would not start, and the
+     * cancellation the timeout causes.
+     */
+    private inner class FirstDesktop(
+        private val waiting: CancellableContinuation<InetSocketAddress?>,
+    ) : NsdManager.DiscoveryListener, NsdManager.ResolveListener {
+        private val answered = AtomicBoolean(false)
+
+        fun answer(address: InetSocketAddress?) {
+            if (!answered.compareAndSet(false, true)) return
+            runCatching { manager.stopServiceDiscovery(this) }
+            waiting.resume(address)
+        }
+
+        override fun onDiscoveryStarted(serviceType: String?) = Unit
+
+        override fun onDiscoveryStopped(serviceType: String?) = Unit
+
+        override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) = Unit
+
+        override fun onServiceLost(service: NsdServiceInfo?) = Unit
+
+        override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) = answer(null)
+
+        override fun onServiceFound(service: NsdServiceInfo?) {
+            manager.resolveService(service ?: return, this)
+        }
+
+        // A service that will not resolve is one desktop of possibly several. The search
+        // carries on until something resolves or the timeout ends it.
+        override fun onResolveFailed(info: NsdServiceInfo?, errorCode: Int) = Unit
+
+        override fun onServiceResolved(info: NsdServiceInfo?) {
+            val resolved = info ?: return
+            val host = resolved.hostAddresses.firstOrNull() ?: return
+            answer(InetSocketAddress(host, resolved.port))
+        }
+    }
 
     companion object {
         /** What the desktop advertises. Fixed by §5.1 and matched exactly. */
         const val SERVICE_TYPE: String = "_photosync._tcp"
+
+        /**
+         * How long a phone looks before deciding the computer is off.
+         *
+         * Long enough for a desktop that is awake to answer over a busy home network, short
+         * enough that somebody who pressed Start gets told something.
+         */
+        val LONG_ENOUGH: Duration = 10.seconds
     }
 }
