@@ -108,6 +108,14 @@ status = "active"
 quote = "Hash mismatch → delete the partial, one full re-transfer, then skip + report."
 
 [[requirement]]
+id = "R-CATALOG-006"
+section = "§6.1"
+area = "CATALOG"
+status = "deferred"
+quote = "A desktop stops reading a catalog at 1,000,000 entries and refuses the session."
+note = "Pairing proves who a phone is, not that it will stop sending."
+
+[[requirement]]
 id = "R-XFER-005"
 section = "§6.5"
 area = "XFER"

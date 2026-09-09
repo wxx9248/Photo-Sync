@@ -138,6 +138,11 @@ impersonation is blocked by pairing alone.
 ## 6. Session flow
 
 1. **Catalog.** Phone → frozen list of `(path, size, mtime)` + total bytes. Desktop acks.
+   * A desktop stops reading a catalog at 1,000,000 entries and refuses the session. It
+     holds the whole catalog for the length of the session to diff against, so without a
+     ceiling a phone decides how much memory the desktop uses. The same ceiling bounds the
+     deletion results of §8, because a phone cannot report on more photographs than a
+     catalog can name.
 2. **Diff.** Desktop partitions the catalog:
    * **previously imported** — matches this device's index row on (path, size, mtime);
    * **already staged** — matches a verified staging-manifest entry on (path, size, mtime);
@@ -392,3 +397,4 @@ non-camera buckets (screenshots, app downloads), iOS. Also explicitly out of sco
 | R23 | Commit clears the whole device staging dir; partials are progress-only and may be discarded |
 | R24 | Vault path is a plain setting (no migration); index lives in the app data directory |
 | R25 | A stream is bounded by its declared catalog size; an overrun is an ordinary receive error |
+| R26 | A catalog has a ceiling; a phone cannot make the desktop hold an unbounded amount |
