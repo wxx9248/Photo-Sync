@@ -17,7 +17,7 @@ import android.provider.MediaStore
  * leaves the items occupying storage for weeks, which is the opposite of what a person pressing
  * "free up 18.2 GB" asked for.
  */
-object Deletions {
+internal object Deletions {
     /** How many identifiers travel in one request. */
     const val BATCH: Int = 500
 

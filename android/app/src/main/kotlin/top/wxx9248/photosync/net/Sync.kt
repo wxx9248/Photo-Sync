@@ -15,7 +15,7 @@ import top.wxx9248.photosync.session.Session
  * platform is in the classes this uses. What is left here is the order the two go in, which is
  * short enough to read in one sitting — and that is the point of the split.
  */
-class Sync(
+internal class Sync(
     private val context: Context,
     private val identity: Identity,
     private val deviceName: String,

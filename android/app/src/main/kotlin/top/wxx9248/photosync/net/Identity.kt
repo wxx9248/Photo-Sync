@@ -22,7 +22,7 @@ import javax.security.auth.x500.X500Principal
  * §5.2 pins the subject public key and nothing else, which is what makes a certificate that
  * expired or names the wrong host still exactly as trustworthy as the day it was made.
  */
-class Identity private constructor(
+internal class Identity private constructor(
     private val entry: KeyStore.PrivateKeyEntry,
 ) {
     val certificate: X509Certificate = entry.certificate as X509Certificate

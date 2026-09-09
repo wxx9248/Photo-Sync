@@ -26,7 +26,7 @@ import top.wxx9248.photosync.R
  */
 
 /** The summary a person is shown before anything moves. §3.4, tap one. */
-data class StartState(
+internal data class StartState(
     val newPhotos: Long,
     val alreadySafe: Long,
     val bytes: Long,
@@ -35,7 +35,7 @@ data class StartState(
 )
 
 @Composable
-fun StartScreen(state: StartState, onStart: () -> Unit) {
+internal fun StartScreen(state: StartState, onStart: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -61,14 +61,14 @@ fun StartScreen(state: StartState, onStart: () -> Unit) {
  * The single prompt of §8: how much can be freed, split between what came across just now and
  * what an earlier session had already stored. One prompt, whatever the count.
  */
-data class FreeUpState(
+internal data class FreeUpState(
     val fromThisTransfer: Long,
     val fromEarlier: Long,
     val bytes: Long,
 )
 
 @Composable
-fun FreeUpScreen(state: FreeUpState, onConfirm: () -> Unit, onSkip: () -> Unit) {
+internal fun FreeUpScreen(state: FreeUpState, onConfirm: () -> Unit, onSkip: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),

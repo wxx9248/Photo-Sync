@@ -20,7 +20,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * that wakes up later hears it. A desktop that is not found is not an error, it is the
  * "is the computer on?" screen, so this reports absence rather than throwing.
  */
-class Discovery(context: Context) {
+internal class Discovery(context: Context) {
     private val manager =
         context.getSystemService(Context.NSD_SERVICE) as NsdManager
 

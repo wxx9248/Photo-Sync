@@ -11,7 +11,7 @@ import top.wxx9248.photosync.session.PairingStorage
  * between sessions: no transfer progress, no catalog, nothing that could disagree with the
  * desktop later. Two lines of text is the whole of it.
  */
-class FilePairingStorage(private val file: File) : PairingStorage {
+internal class FilePairingStorage(private val file: File) : PairingStorage {
     override fun read(): PairedDesktop? {
         if (!file.isFile) return null
         val lines = runCatching { file.readLines() }.getOrDefault(emptyList())

@@ -20,7 +20,7 @@ import top.wxx9248.photosync.session.Timestamp
  * on purpose: the `DCIM/Camera` bucket, images and videos, and nothing that is still being
  * written or already in the trash.
  */
-class MediaStoreLibrary(private val resolver: ContentResolver) : Library {
+internal class MediaStoreLibrary(private val resolver: ContentResolver) : Library {
     /**
      * Everything on offer, read once.
      *

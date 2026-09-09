@@ -18,7 +18,7 @@ import javax.net.ssl.X509TrustManager
  * saying that out loud in a trust manager is safer than leaving a default in place that
  * would accept a public authority's certificate for the same host.
  */
-class PinnedDesktop(private val expectedPin: String) : X509TrustManager {
+internal class PinnedDesktop(private val expectedPin: String) : X509TrustManager {
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val presented = chain?.firstOrNull()
             ?: throw CertificateException("the desktop presented no certificate")
@@ -40,7 +40,7 @@ class PinnedDesktop(private val expectedPin: String) : X509TrustManager {
 }
 
 /** Presents this phone's keystore-resident key, which is how the desktop recognises it. */
-class DeviceKeyManager(private val identity: Identity) : X509ExtendedKeyManager() {
+internal class DeviceKeyManager(private val identity: Identity) : X509ExtendedKeyManager() {
     override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?) =
         arrayOf(Identity.ALIAS)
 

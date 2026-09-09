@@ -59,7 +59,7 @@ import top.wxx9248.photosync.session.UploadOutcome
  * built for them; opening more is a change to this class alone, and it is worth measuring on
  * a real network before it is made.
  */
-class GrpcDesktop(
+internal class GrpcDesktop(
     private val channel: ManagedChannel,
     parent: CoroutineScope,
 ) : AutoCloseable {
