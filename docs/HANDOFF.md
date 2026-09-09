@@ -37,7 +37,17 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
       `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13)
 - [ ] **Discovery against a real phone.** The responder is checked against another Rust daemon
       on this machine; multicast across a home router and `NsdManager`'s reading of the records
-      are what only a real network answers. (§11)
+      are what only a real network answers. The phone's side of it was rewritten in §15 and has
+      never run. (§11, §15)
+- [ ] **A video, across the wire.** The phone used to gather a whole file in memory before
+      sending it, so anything larger than free RAM could not cross. It now streams. Nothing in
+      `./verify` reaches that class: the phone's tests stop at the state machine and this is
+      the adapter under it. Send a photograph and then a long video, and watch the phone's
+      memory while it goes. (§15)
+- [ ] **Restart the desktop after pairing.** It read its paired phones from a path nothing
+      wrote to, so it woke up knowing nobody. Fixed, and unreachable by any test, because the
+      defect was in `main`. Pair a phone, quit the desktop, start it again, and check the phone
+      still syncs without showing a code. (§15)
 - [ ] **One real session, end to end.** Desktop and phone, same network, a photograph across
       and freed. This is M9's exit and the only thing that exercises every piece at once. (§14)
 - [ ] **Throughput.** The real server takes its lock per message rather than per file, which is
@@ -511,3 +521,60 @@ guess until somebody follows it.
 
 What M9 cannot close from here is its own exit: both halves installing on a clean machine and
 phone, and one real session running end to end. That is the last item in §0.
+
+## 15. What an inspection against the conventions turned up
+
+A sweep of both halves against `CONVENTIONS.md` and the two language documents, after every
+milestone had closed. Five defects and four tidying changes; each is its own commit.
+
+**The phone held whole files in memory.** `GrpcDesktop` gathered every chunk into a list and
+opened the upload only when the digest arrived, so a phone needed as much free memory as its
+largest photograph and a video simply could not cross. `STACK.md` §5.3 says chunking bounds
+memory on both ends, and it did not on this end. This is the same defect the desktop had in
+M6, on the other side of the same wire. The request now opens when the upload does and the
+pieces travel along it, over a channel with no buffer, so the phone holds one 512 KB piece at
+a time.
+
+**The phone never gave up looking for a desktop.** `Discovery.find` declared a ten-second
+timeout and never read it, so a phone whose computer was off waited forever and the "is the
+computer on?" screen of §5.1 was unreachable. Discovery was also left running after an answer
+came back, which keeps the radio busy for the life of the process.
+
+**The desktop forgot every phone when it restarted.** `main` asked `Paired::load` for a
+directory and gave it `<data>/paired.json`, a name nothing else uses, so the loader looked
+inside a file that is not a directory and found nothing. It then served through a `listen`
+whose hidden default wrote new pairings into the working directory. Pairing is once-ever in
+§5.2 and had become once-per-start. The default is gone: there is one `listen` and it asks
+where the pairings live.
+
+**Nothing bounded what a phone could make the desktop hold.** The catalog and the deletion
+results were each gathered into a vector with no ceiling, which conventions §12.1 and §12.2
+rule out for anything a peer drives. `SPEC.md` §6.1 now states the ceiling and R-CATALOG-006
+covers it.
+
+**Cancellation was reported as a refusal.** Every call in `GrpcDesktop` was wrapped in
+`runCatching`, which also catches the `CancellationException` a cancelled session throws. The
+state machine was told the desktop had refused, and the coroutine carried on past its scope.
+Rule K8.
+
+The rest was tidying: one reader for the conformance vectors instead of one per Rust suite,
+one name for the keystore alias, `internal` across the application module, and
+`unreachable_pub` on the verification runner so R10 is checked by the compiler rather than at
+review.
+
+### Left alone, and why
+
+- **`MediaStoreLibrary.read` reopens the file for every chunk**, re-querying MediaStore and
+  skipping to the offset each time, which is quadratic in the length of a video. Rule 11.1
+  says measure first, and measuring this needs a phone. It belongs with the throughput item
+  in §0.
+- **`Desktop::showing` in the pairing test polls with `Thread::sleep`**, which rule 6.4 rules
+  out. It has a two-second budget and would go flaky on a slow machine. Fixing it means giving
+  `PairingWindow` something to wait on, which is more than the sweep should carry.
+- **No ktlint or detekt is configured**, though `CONVENTIONS-KOTLIN.md` says the lint
+  configuration lives there. Adding one needs the plugin, which needs a network this machine
+  does not have.
+- **The application module has no plain JVM tests.** `GrpcDesktop` and `Discovery` hold no
+  Android type and could be tested against an in-process server, but `./verify` runs only
+  `:session:test`, and reaching the application module needs the Android SDK on the build
+  server. That is why two of the fixes above are in §0 rather than in the suite.
