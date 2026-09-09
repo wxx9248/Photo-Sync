@@ -116,6 +116,14 @@ quote = "A stream is bounded by the size its catalog entry declared."
 note = "Without a bound a phone decides how much staging space it takes."
 
 [[requirement]]
+id = "R-XFER-006"
+section = "§6.4"
+area = "XFER"
+status = "deferred"
+quote = "Multiple concurrent file streams to utilize full bandwidth"
+note = "Each file keeps its own digest and its own watermark, so interleaved streams cannot spoil one another."
+
+[[requirement]]
 id = "R-STAGE-001"
 section = "§6.5"
 area = "STAGE"

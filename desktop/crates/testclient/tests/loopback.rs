@@ -14,6 +14,7 @@ use photo_sync::identity::Identity;
 use photo_sync::pinning::Paired;
 use photo_sync::serve::{Listening, listen};
 use photo_sync::tls::PairingWindow;
+use photo_sync_core::covers;
 use photo_sync_core::id::DeviceId;
 use photo_sync_sim::{Phone, PhoneFile, SessionOutcome};
 use photo_sync_testclient::Connected;
@@ -124,30 +125,45 @@ fn vault_files(scratch: &Scratch) -> Vec<String> {
     names
 }
 
-/// Pairs a phone with a desktop and runs one whole session between them.
-fn one_session(scratch: &Scratch, phone: &mut Phone) -> SessionOutcome {
+/// A desktop a phone is already paired with, kept running so it can be dialled more than
+/// once. A reconnection is an ordinary part of `SPEC.md` §6, so it has to be arrangeable.
+struct Known {
+    desktop: Desktop,
+    desktop_identity: Identity,
+    phone_identity: Identity,
+}
+
+fn known(scratch: &Scratch, phone: &Phone) -> Known {
     let desktop_identity = scratch.identity("desktop");
     let phone_identity = scratch.identity("phone");
 
     let mut paired = Paired::new();
-    paired.pair(
-        phone_identity.public_key(),
-        &phone.device.clone(),
-        &phone.name.clone(),
-    );
+    paired.pair(phone_identity.public_key(), &phone.device, &phone.name);
 
-    let desktop = Desktop::start(scratch, &desktop_identity, paired);
-    let mut connected = match Connected::dial(
-        desktop.runtime.handle(),
-        desktop.address,
-        &phone_identity,
-        desktop_identity.public_key(),
-        &phone.device.clone(),
+    Known {
+        desktop: Desktop::start(scratch, &desktop_identity, paired),
+        desktop_identity,
+        phone_identity,
+    }
+}
+
+fn dial(known: &Known, phone: &Phone) -> Connected {
+    match Connected::dial(
+        known.desktop.runtime.handle(),
+        known.desktop.address,
+        &known.phone_identity,
+        known.desktop_identity.public_key(),
+        &phone.device,
     ) {
         Ok(connected) => connected,
         Err(error) => panic!("cannot reach the desktop: {error}"),
-    };
+    }
+}
 
+/// Pairs a phone with a desktop and runs one whole session between them.
+fn one_session(scratch: &Scratch, phone: &mut Phone) -> SessionOutcome {
+    let known = known(scratch, phone);
+    let mut connected = dial(&known, phone);
     phone.run_session(&mut connected)
 }
 
@@ -222,4 +238,64 @@ fn one_photograph_at_two_paths_crosses_once_and_frees_both() {
     assert_eq!(vault_files(&scratch).len(), 1);
     assert_eq!(outcome.deleted.len(), 2);
     assert!(phone.files.is_empty());
+}
+
+#[test]
+fn a_transfer_cut_short_carries_on_from_the_watermark_over_a_socket() {
+    covers!("R-STAGE-008", "R-XFER-006");
+    let whole = b"a photograph long enough to be worth carrying on with".to_vec();
+    let scratch = Scratch::new();
+    let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, whole.clone()),
+    );
+
+    let known = known(&scratch, &phone);
+
+    // The first connection gets twenty bytes across and then dies with no digest behind it.
+    // Nothing is in the vault, and nothing could be: the file is not whole.
+    {
+        let mut connected = dial(&known, &phone);
+        phone.send_partly(&mut connected, 20);
+    }
+    assert!(
+        vault_files(&scratch).is_empty(),
+        "an unfinished file reached the vault"
+    );
+
+    // Those twenty bytes are on the desktop's own disk, in a partial named by the manifest.
+    // A desktop that had gathered the stream up in memory would have nothing here at all.
+    let staging = scratch.vault().join(".staging").join("phone-a");
+    let partials: Vec<PathBuf> = match std::fs::read_dir(&staging) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|suffix| suffix == "part"))
+            .collect(),
+        Err(error) => panic!("nothing was staged: {error}"),
+    };
+    assert_eq!(partials.len(), 1, "staging holds {partials:?}");
+    let kept = match std::fs::read(&partials[0]) {
+        Ok(bytes) => bytes,
+        Err(error) => panic!("cannot read the partial: {error}"),
+    };
+    assert_eq!(
+        kept,
+        whole[..20],
+        "the partial is not the start of the photograph"
+    );
+
+    // The phone comes back with the same frozen catalog. The desktop had to have written
+    // those bytes to its own disk as they arrived to be able to ask for the rest of them.
+    let mut connected = dial(&known, &phone);
+    let outcome = phone.run_session(&mut connected);
+
+    assert_eq!(outcome.uploaded.len(), 1);
+    let names = vault_files(&scratch);
+    assert_eq!(names.len(), 1, "the vault holds {names:?}");
+    let stored = match std::fs::read(scratch.vault().join(&names[0])) {
+        Ok(bytes) => bytes,
+        Err(error) => panic!("cannot read the vault copy: {error}"),
+    };
+    assert_eq!(stored, whole, "the resumed file is not the photograph");
 }

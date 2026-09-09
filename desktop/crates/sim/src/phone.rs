@@ -181,6 +181,12 @@ impl Phone {
                     data: file.content[from..to].to_vec(),
                 });
             }
+            // The stream stops with no digest behind it, which is what a connection dying
+            // mid-file looks like from the desktop's side.
+            sim.deliver(Event::UploadAborted {
+                device: self.device.clone(),
+                file: wanted.file,
+            });
             outcome.uploaded.push(wanted.path.clone());
         }
 

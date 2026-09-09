@@ -142,6 +142,7 @@ impl Connected {
                 Vec::new()
             }
             Event::UploadClosed { file, digest, .. } => self.upload(file, digest).await,
+            Event::UploadAborted { .. } => self.abandon().await,
             Event::FinishRequested { .. } => self.finish().await,
             Event::DeletionsReported { outcomes, .. } => self.report(outcomes).await,
             // A phone never sends the rest of the vocabulary; those are the desktop talking
@@ -228,11 +229,22 @@ impl Connected {
         }]
     }
 
-    async fn upload(&mut self, file: FileId, digest: Sha256) -> Vec<Effect> {
+    /// Sends what the phone got through and then stops, with no digest behind it.
+    ///
+    /// This is a connection that died mid-file rather than a phone that changed its mind, so
+    /// there is nothing to report: the desktop keeps whatever became durable and the next
+    /// diff says where to carry on from. `SPEC.md` §7.6.
+    async fn abandon(&mut self) -> Vec<Effect> {
         let Some(sending) = self.sending.take() else {
             return Vec::new();
         };
+        let messages = Self::stream_of(&sending, None);
+        let _ = self.client.upload_file(tokio_stream::iter(messages)).await;
+        Vec::new()
+    }
 
+    /// The messages one file's stream is made of, with a digest at the end when there is one.
+    fn stream_of(sending: &Sending, digest: Option<Sha256>) -> Vec<wire::FileChunk> {
         let mut messages = vec![wire::FileChunk {
             kind: Some(wire::file_chunk::Kind::Header(wire::FileHeader {
                 file_id: sending.file.0.to_string(),
@@ -247,11 +259,22 @@ impl Connected {
                 kind: Some(wire::file_chunk::Kind::Data(piece.to_vec())),
             });
         }
-        messages.push(wire::FileChunk {
-            kind: Some(wire::file_chunk::Kind::Trailer(wire::FileTrailer {
-                sha256: digest.0.to_vec(),
-            })),
-        });
+        if let Some(digest) = digest {
+            messages.push(wire::FileChunk {
+                kind: Some(wire::file_chunk::Kind::Trailer(wire::FileTrailer {
+                    sha256: digest.0.to_vec(),
+                })),
+            });
+        }
+        messages
+    }
+
+    async fn upload(&mut self, file: FileId, digest: Sha256) -> Vec<Effect> {
+        let Some(sending) = self.sending.take() else {
+            return Vec::new();
+        };
+
+        let messages = Self::stream_of(&sending, Some(digest));
 
         let outcome = match self.client.upload_file(tokio_stream::iter(messages)).await {
             Ok(answer) => {

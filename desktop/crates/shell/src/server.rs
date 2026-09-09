@@ -178,57 +178,83 @@ impl wire::photo_sync_server::PhotoSync for SyncService {
         let device = self.caller(&request)?;
         let mut chunks = request.into_inner();
 
-        let mut events = Vec::new();
         let mut file = None;
         let mut offset = 0;
+        let mut answer = None;
 
+        // Each message is handed over as it arrives rather than gathered up first. A file is
+        // as large as the phone's storage, so holding one in memory to deliver it in one
+        // piece would be a promise the desktop cannot keep; more than that, the durability of
+        // `SPEC.md` §7.6 is built out of what has been written and synced *so far*, and
+        // nothing has been written so far if the whole stream is still in hand. Taking the
+        // desk lock per message rather than per file is also what lets §6.4's concurrent
+        // streams make progress against one another.
         while let Some(chunk) = chunks.next().await {
-            match chunk?.kind {
+            let event = match chunk?.kind {
                 Some(wire::file_chunk::Kind::Header(header)) => {
                     let named = FileId(header.file_id.parse().map_err(|_| {
                         Status::invalid_argument("the file identifier is not a number")
                     })?);
                     file = Some(named);
                     offset = header.offset;
-                    events.push(Event::UploadOpened {
+                    Event::UploadOpened {
                         device: device.clone(),
                         file: named,
                         path: DevicePath::new(header.path),
                         size: header.size,
                         mtime: Timestamp(header.mtime),
                         offset: header.offset,
-                    });
+                    }
                 }
                 Some(wire::file_chunk::Kind::Data(data)) => {
                     let Some(named) = file else {
                         return Err(Status::invalid_argument("bytes arrived before a header"));
                     };
                     let length = data.len() as u64;
-                    events.push(Event::ChunkArrived {
+                    let arrived = Event::ChunkArrived {
                         device: device.clone(),
                         file: named,
                         offset,
                         data: data.to_vec(),
-                    });
+                    };
                     offset += length;
+                    arrived
                 }
                 Some(wire::file_chunk::Kind::Trailer(trailer)) => {
                     let Some(named) = file else {
                         return Err(Status::invalid_argument("a digest arrived before a header"));
                     };
-                    events.push(Event::UploadClosed {
+                    Event::UploadClosed {
                         device: device.clone(),
                         file: named,
                         digest: digest_from(&trailer.sha256)?,
-                    });
+                    }
                 }
                 None => return Err(Status::invalid_argument("an empty message arrived")),
+            };
+
+            let effects = self.deliver(vec![event]).await;
+            // The desktop has decided what became of the file. Anything still coming is bytes
+            // it has already refused, so the answer goes back now rather than after them.
+            if let Some(outcome) = upload_result(&effects) {
+                answer = Some(outcome);
+                break;
             }
         }
 
-        let effects = self.deliver(events).await;
-        let Some(outcome) = upload_result(&effects) else {
-            return Err(Status::internal("the desktop said nothing about the file"));
+        let Some(outcome) = answer else {
+            // The stream ended without a digest, which is a connection that went away
+            // mid-file. Saying so is what makes the bytes that did arrive durable and fixes
+            // the watermark the next diff resumes from, so it happens before the error goes
+            // back. `SPEC.md` §7.6.
+            if let Some(named) = file {
+                self.deliver(vec![Event::UploadAborted {
+                    device,
+                    file: named,
+                }])
+                .await;
+            }
+            return Err(Status::aborted("the file was not finished"));
         };
         Ok(Response::new(outcome))
     }

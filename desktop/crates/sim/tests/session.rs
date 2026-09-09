@@ -1683,3 +1683,71 @@ fn nothing_is_kept_of_a_photograph_that_changed_while_it_was_being_sent() {
     );
     assert!(sim.store.device_files().is_empty());
 }
+
+#[test]
+fn two_photographs_can_be_in_flight_at_once() {
+    covers!("R-XFER-006");
+    let second = b"a second photograph, of the dog".to_vec();
+    let other = DevicePath::new("DCIM/Camera/IMG_0002.jpg");
+
+    let mut sim = fresh();
+    sim.deliver(Event::Started {
+        now: Timestamp(MTIME),
+    });
+    sim.deliver(Event::PeerConnected {
+        device: phone(),
+        name: "Kitchen phone".to_string(),
+    });
+    sim.deliver(Event::CatalogSubmitted {
+        device: phone(),
+        entries: vec![
+            photo_entry(),
+            CatalogEntry {
+                path: other.clone(),
+                size: second.len() as u64,
+                mtime: Timestamp(MTIME),
+            },
+        ],
+        total_bytes: (PHOTO.len() + second.len()) as u64,
+    });
+    sim.deliver(Event::DiffRequested { device: phone() });
+    let (to_send, _) = diff_of(&sim.take_log());
+    assert_eq!(to_send.len(), 2);
+    let (first, last) = (to_send[0].file, to_send[1].file);
+
+    // Both streams are open together and their chunks arrive alternately, which is what
+    // several channels look like from here. Each file keeps its own digest and its own
+    // watermark, so neither can be spoiled by the other's bytes.
+    open_upload(&mut sim, first, 0);
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file: last,
+        path: other.clone(),
+        size: second.len() as u64,
+        mtime: Timestamp(MTIME),
+        offset: 0,
+    });
+
+    let (head, tail) = PHOTO.split_at(9);
+    let (other_head, other_tail) = second.split_at(11);
+    send_bytes(&mut sim, first, 0, head);
+    send_bytes(&mut sim, last, 0, other_head);
+    send_bytes(&mut sim, first, head.len() as u64, tail);
+    send_bytes(&mut sim, last, other_head.len() as u64, other_tail);
+
+    close_upload(&mut sim, last, digest_of(&second));
+    close_upload(&mut sim, first, digest_of(PHOTO));
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    assert_eq!(sim.storage.vault().len(), 2);
+    let stored: Vec<Vec<u8>> = sim.storage.vault().values().cloned().collect();
+    assert!(
+        stored.contains(&PHOTO.to_vec()),
+        "the first photograph is not in the vault"
+    );
+    assert!(
+        stored.contains(&second),
+        "the second photograph is not in the vault"
+    );
+    assert_eq!(sim.store.device_files().len(), 2);
+}
