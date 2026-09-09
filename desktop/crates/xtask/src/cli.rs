@@ -8,6 +8,7 @@ pub enum Command {
     Doctor,
     Scenario { id: String, real: bool },
     Mutants { module: Option<String> },
+    Replay { seed: String },
     ProtectedArtifacts { against: String },
     NotYetBuilt { name: String, milestone: String },
 }
@@ -58,7 +59,10 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
         ["verify", "mutants", module] | ["mutants", module] => Ok(Command::Mutants {
             module: Some((*module).to_string()),
         }),
-        ["verify", name @ ("replay" | "self-test"), ..] => Ok(Command::NotYetBuilt {
+        ["verify", "replay", seed] | ["replay", seed] => Ok(Command::Replay {
+            seed: (*seed).to_string(),
+        }),
+        ["verify", name @ "self-test", ..] => Ok(Command::NotYetBuilt {
             name: (*name).to_string(),
             milestone: "M2".to_string(),
         }),
@@ -78,6 +82,7 @@ pub fn usage() -> String {
         "  doctor                         whether this machine can run each tier",
         "  scenario <id> [--real]         one acceptance scenario, simulated or on the real stack",
         "  mutants [module]               does the suite detect a wrong implementation?",
+        "  replay <seed>                  one campaign run, exactly as it happened",
         "  protected-artifacts --against <ref>",
     ]
     .join("\n")

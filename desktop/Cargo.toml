@@ -24,6 +24,7 @@ photo-sync-protocol = { path = "crates/protocol" }
 photo-sync-sim = { path = "crates/sim" }
 photo-sync-testclient = { path = "crates/testclient" }
 
+proptest = "1.11.0"
 prost = "0.14.4"
 prost-build = "0.14.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }

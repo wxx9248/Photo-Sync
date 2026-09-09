@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 
 use photo_sync_core::effect::Effect;
 use photo_sync_core::event::{Event, StorageOutcome};
-use photo_sync_core::id::DeviceId;
+use photo_sync_core::id::{DeviceId, VaultName};
 use photo_sync_core::port::StorageError;
 use photo_sync_core::store::{DeviceFileRow, StagingEntry, StoreError, StoreRequest};
 use photo_sync_core::{Desktop, Moment};
@@ -179,6 +179,24 @@ impl Simulation {
             self.storage.put_in_vault(&row.vault_name, bytes.to_vec());
         }
         self.store.remember_import(row);
+    }
+
+    /// Somebody deletes a photograph out of the vault, which both accounts have to hear
+    /// about: the vault is the truth about what is safely stored, and a model that still
+    /// expected the file would report the person's own tidying as a difference.
+    pub fn curate(&mut self, name: &VaultName) {
+        if let Some(bytes) = self.storage.vault().get(name) {
+            let gone = digest(bytes);
+            let elsewhere = self
+                .storage
+                .vault()
+                .iter()
+                .any(|(other, held)| other != name && digest(held) == gone);
+            if !elsewhere {
+                self.model.forget_vault_copy(gone);
+            }
+        }
+        self.storage.curate(name);
     }
 
     /// Delivers one event and performs everything it leads to.

@@ -3,6 +3,7 @@
 //! One entry point for every tier, so a person, a hook, and a build server all invoke the same
 //! checks. See `docs/VERIFICATION.md`.
 
+mod campaign;
 mod checks;
 mod cli;
 mod coverage;
@@ -50,6 +51,11 @@ fn run(command: Command) -> Result<bool, String> {
         Command::Matrix => coverage::print_matrix(&root),
         Command::Doctor => doctor::run(&root),
         Command::Mutants { module } => mutants::run(&root, module.as_deref()),
+        Command::Replay { seed } => {
+            let outcome = campaign::replay_one(&seed)?;
+            campaign::print_failures(&outcome);
+            Ok(outcome.passed())
+        }
         Command::Scenario { id, real } => {
             let against = if real {
                 scenario::Against::RealStack

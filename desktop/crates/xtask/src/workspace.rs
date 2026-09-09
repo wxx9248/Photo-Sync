@@ -26,6 +26,10 @@ pub fn reports_directory(root: &Path) -> PathBuf {
     root.join("verification/reports")
 }
 
+pub fn corpus_directory(root: &Path) -> PathBuf {
+    root.join("verification/corpus")
+}
+
 pub fn scenarios_directory(root: &Path) -> PathBuf {
     root.join("verification/scenarios")
 }

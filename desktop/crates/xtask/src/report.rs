@@ -78,6 +78,13 @@ pub struct Failure {
     pub diff: String,
 }
 
+/// What a run of made-up sessions found.
+#[derive(Clone, Debug, Serialize)]
+pub struct Campaign {
+    pub seeds: usize,
+    pub failed_seeds: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Report {
     pub tier: String,
@@ -87,6 +94,10 @@ pub struct Report {
     pub requirements: Requirements,
     pub checks: Vec<CheckResult>,
     pub failures: Vec<Failure>,
+
+    /// Absent until a tier that runs one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub campaign: Option<Campaign>,
 }
 
 impl Report {
@@ -99,7 +110,12 @@ impl Report {
             requirements: Requirements::default(),
             checks: Vec::new(),
             failures: Vec::new(),
+            campaign: None,
         }
+    }
+
+    pub fn ran(&mut self, campaign: Campaign) {
+        self.campaign = Some(campaign);
     }
 
     pub fn record(&mut self, requirements: Requirements) {

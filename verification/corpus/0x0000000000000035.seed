@@ -1,0 +1,7 @@
+A photograph committed, curated out of the vault by hand, then copied to a second path on the
+phone and synced again.
+
+Found the model claiming the vault would hold that photograph a second time. The desktop was
+right: SPEC.md §7.3 deduplicates against the index and §7.5 says a photograph once imported is
+never imported again, so a copy of content the index already knows earns an index row and no
+vault write. The photograph stays off the vault and, by §8, stays on the phone.

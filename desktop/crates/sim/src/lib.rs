@@ -10,11 +10,13 @@
 //! boundary, and the scenario generator arrive in milestone M2, described in
 //! `docs/ROADMAP.md`.
 
+pub mod campaign;
 pub mod phone;
 pub mod run;
 pub mod storage;
 pub mod store;
 
+pub use campaign::{Failure, Op};
 pub use phone::{Driver, Phone, PhoneFile, SessionOutcome};
 pub use run::{Faults, Simulation};
 pub use storage::Storage;

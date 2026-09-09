@@ -169,11 +169,19 @@ impl Model {
 
     /// Everything a phone got across becomes part of the archive at once.
     ///
-    /// Content the vault already holds is not held twice, and every file gets a row whether
-    /// or not its content was new, because the row is what says the phone may delete it.
+    /// What decides whether a photograph reaches the vault is whether the *index* already
+    /// knows its content, not whether the vault still holds it. `SPEC.md` §7.3 deduplicates
+    /// against the index and §7.5 says a photograph once imported is never imported again, so
+    /// content whose vault copy a person deleted does not come back. It is simply never
+    /// offered for deletion afterwards, which is what §8 checks the vault for.
+    ///
+    /// Every file gets a row whether or not its content was new, because the row is what
+    /// later says the phone may delete it.
     fn commit(&mut self, device: &DeviceId) {
         for staged in self.staged.remove(device).unwrap_or_default() {
-            self.expected.vault.insert(staged.digest);
+            if !self.expected.content.contains(&staged.digest) {
+                self.expected.vault.insert(staged.digest);
+            }
             self.expected.content.insert(staged.digest);
             self.expected.device_files.insert(
                 (device.clone(), staged.path),
@@ -211,6 +219,13 @@ impl Model {
     /// index and not by the vault, which is the state `SPEC.md` §8 is written around.
     pub fn remember_vault_copy(&mut self, digest: Sha256) {
         self.expected.vault.insert(digest);
+    }
+
+    /// Somebody deleted a photograph out of the vault. `SPEC.md` §8 keeps the index row: a
+    /// photograph curated away was still imported, and is simply never offered for deletion
+    /// again.
+    pub fn forget_vault_copy(&mut self, digest: Sha256) {
+        self.expected.vault.remove(&digest);
     }
 
     /// What the desktop should be holding now.

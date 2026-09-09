@@ -104,8 +104,18 @@ impl Phone {
             .collect()
     }
 
+    /// Gets everything across but stops short of the finish signal, so a caller can decide
+    /// what happens to the commit.
+    pub fn run_session_until_commit<D: Driver>(&mut self, sim: &mut D) -> SessionOutcome {
+        self.transfer(sim, false)
+    }
+
     /// Runs one session from the handshake to the summary.
     pub fn run_session<D: Driver>(&mut self, sim: &mut D) -> SessionOutcome {
+        self.transfer(sim, true)
+    }
+
+    fn transfer<D: Driver>(&mut self, sim: &mut D, finish: bool) -> SessionOutcome {
         let mut outcome = SessionOutcome::default();
 
         sim.deliver(Event::PeerConnected {
@@ -137,6 +147,10 @@ impl Phone {
             self.upload(sim, &wanted);
             outcome.uploaded.push(wanted.path.clone());
             sim.take_log();
+        }
+
+        if !finish {
+            return outcome;
         }
 
         sim.deliver(Event::FinishRequested {

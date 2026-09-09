@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::cli::Tier;
-use crate::report::{CheckResult, Failure, Report, Requirements};
+use crate::report::{Campaign, CheckResult, Failure, Report, Requirements};
 use crate::requirements::{Registry, Status};
-use crate::{coverage, mutants, scenario, spec_check, tools, workspace};
+use crate::{campaign, coverage, mutants, scenario, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
 /// failure mode the gate exists to catch.
@@ -26,6 +26,12 @@ const PROTECTED: [&str; 4] = [
 const ADDABLE: &str = "verification/scenarios/";
 
 const SPECIFICATION: &str = "docs/SPEC.md";
+
+/// What `docs/VERIFICATION.md` §L6 asks of the full tier.
+const CAMPAIGN_SEEDS: usize = 256;
+
+/// The nightly tier has hours rather than minutes.
+const NIGHTLY_SEEDS: usize = 4096;
 
 const REGISTRY: &str = "verification/requirements.toml";
 
@@ -57,16 +63,16 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
         report.blame(failures);
     }
 
+    report.add(corpus(root)?);
+    if matches!(tier, Tier::Full | Tier::Nightly) {
+        let (check, ran) = fresh_seeds(tier);
+        report.add(check);
+        report.ran(ran);
+    }
+
     report.add(specification(root)?);
     report.add(requirement_matrix(root)?);
     report.record(requirement_summary(root)?);
-
-    if matches!(tier, Tier::Full | Tier::Nightly) {
-        report.add(CheckResult::skipped(
-            "campaign",
-            "the simulator arrives in milestone M2, see docs/ROADMAP.md",
-        ));
-    }
 
     if matches!(tier, Tier::Nightly) {
         report.add(mutation(root)?);
@@ -234,6 +240,56 @@ fn requirement_summary(root: &Path) -> Result<Requirements, String> {
         verified: matrix.active.len() - unverified.len(),
         unverified,
     })
+}
+
+/// Every seed that has ever failed, replayed. `AGENTS.md` commits each beside its fix, and
+/// the fastest tier runs them from then on so a fixed bug stays fixed.
+fn corpus(root: &Path) -> Result<CheckResult, String> {
+    let outcome = campaign::replay_corpus(&workspace::corpus_directory(root))?;
+    if outcome.seeds == 0 {
+        return Ok(CheckResult::skipped(
+            "corpus",
+            "no seed has ever failed, so there is nothing to replay",
+        ));
+    }
+
+    campaign::print_failures(&outcome);
+    println!("corpus: {} seeds replayed", outcome.seeds);
+    Ok(CheckResult::from_outcome(
+        "corpus",
+        outcome.passed(),
+        "a seed that was fixed has come back",
+    ))
+}
+
+/// Sessions nobody has tried yet.
+fn fresh_seeds(tier: Tier) -> (CheckResult, Campaign) {
+    let seeds = match tier {
+        Tier::Nightly => NIGHTLY_SEEDS,
+        _ => CAMPAIGN_SEEDS,
+    };
+    let outcome = campaign::run(seeds);
+
+    campaign::print_failures(&outcome);
+    println!(
+        "campaign: {} seeds, {} failed",
+        outcome.seeds,
+        outcome.failures.len()
+    );
+    let check = CheckResult::from_outcome(
+        "campaign",
+        outcome.passed(),
+        "a made-up session ended somewhere the model did not expect",
+    );
+    let ran = Campaign {
+        seeds: outcome.seeds,
+        failed_seeds: outcome
+            .failures
+            .iter()
+            .map(|failure| format!("{:#018x}", failure.seed))
+            .collect(),
+    };
+    (check, ran)
 }
 
 fn specification(root: &Path) -> Result<CheckResult, String> {
