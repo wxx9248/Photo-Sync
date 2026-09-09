@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Every string a person reads on the phone. SPEC.md §3 wants both languages from day one. -->
+<resources>
+    <string name="app_name">Photo Sync</string>
+
+    <!-- Tap one of §3.4. The counts are what the diff worked out. -->
+    <string name="start_summary">%1$d new photos, %2$d already safe.</string>
+    <string name="start">Start</string>
+
+    <!-- The single prompt of §8, split between this transfer and earlier ones. -->
+    <string name="free_up_summary">%1$d photos are safely stored on the computer — %2$d from this transfer, %3$d from earlier. Free up space?</string>
+    <string name="free_up">Free up space</string>
+    <string name="keep_them">Keep them</string>
+
+    <string name="notification_channel">Transfers</string>
+    <string name="notification_working">Moving photographs to the computer</string>
+</resources>

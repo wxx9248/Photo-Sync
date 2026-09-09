@@ -1,7 +1,8 @@
 //! Which tests claim which requirements.
 //!
 //! Declarations are read from the sources rather than from a run, so the matrix exists before
-//! any test executes. Rust tests declare with `covers!`, scenarios with a `covers` key.
+//! any test executes. Rust tests declare with `covers!`, Kotlin tests with `@Covers`, and
+//! scenarios with a `covers` key.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -46,6 +47,7 @@ pub fn build(root: &Path) -> Result<Matrix, String> {
 
     let mut declarations = BTreeMap::new();
     collect_from_rust(&root.join("desktop/crates"), &mut declarations)?;
+    collect_from_kotlin(&root.join("android"), &mut declarations)?;
     collect_from_scenarios(&workspace::scenarios_directory(root), &mut declarations)?;
 
     Ok(Matrix {
@@ -123,6 +125,53 @@ fn collect_from_rust(
     Ok(())
 }
 
+/// The same, for the phone.
+///
+/// Half of the specification is the phone's, and a requirement covered by a Kotlin test is
+/// covered whether or not this end can run it. Leaving these out would show the phone's rules
+/// as unverified for as long as the Android half exists, which is the opposite of what a
+/// traceability matrix is for.
+fn collect_from_kotlin(
+    directory: &Path,
+    into: &mut BTreeMap<String, Vec<String>>,
+) -> Result<(), String> {
+    for file in sources_with(directory, "kt")? {
+        let text = read(&file)?;
+        // A Kotlin annotation sits above the function it belongs to, so the identifiers are
+        // held until the name that earns them turns up.
+        let mut pending: Vec<String> = Vec::new();
+
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("@Covers") {
+                pending.extend(quoted_identifiers(line));
+                continue;
+            }
+            if let Some(name) = kotlin_function_name(trimmed) {
+                for id in pending.drain(..) {
+                    into.entry(id).or_default().push(name.clone());
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// The name of a Kotlin test, including the backticked kind that reads as a sentence.
+fn kotlin_function_name(line: &str) -> Option<String> {
+    let rest = line
+        .strip_prefix("fun ")
+        .or_else(|| line.find(" fun ").map(|at| &line[at + 5..]))?;
+    let rest = rest.trim_start();
+    if let Some(quoted) = rest.strip_prefix('`') {
+        let end = quoted.find('`')?;
+        return Some(quoted[..end].to_string());
+    }
+    let end = rest.find(['(', '<'])?;
+    Some(rest[..end].trim().to_string())
+}
+
 fn collect_from_scenarios(
     directory: &Path,
     into: &mut BTreeMap<String, Vec<String>>,
@@ -181,6 +230,11 @@ fn quoted_identifiers(line: &str) -> Vec<String> {
 }
 
 fn rust_sources(directory: &Path) -> Result<Vec<std::path::PathBuf>, String> {
+    sources_with(directory, "rs")
+}
+
+/// Every source file of one kind under a directory, ignoring build output.
+fn sources_with(directory: &Path, extension: &str) -> Result<Vec<std::path::PathBuf>, String> {
     let mut found = Vec::new();
     if !directory.is_dir() {
         return Ok(found);
@@ -188,9 +242,16 @@ fn rust_sources(directory: &Path) -> Result<Vec<std::path::PathBuf>, String> {
 
     for entry in read_directory(directory)? {
         let path = entry.path();
+        // Generated code declares nothing and there is a great deal of it.
+        if path
+            .file_name()
+            .is_some_and(|name| name == "build" || name == "target")
+        {
+            continue;
+        }
         if path.is_dir() {
-            found.extend(rust_sources(&path)?);
-        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            found.extend(sources_with(&path, extension)?);
+        } else if path.extension().is_some_and(|found| found == extension) {
             found.push(path);
         }
     }

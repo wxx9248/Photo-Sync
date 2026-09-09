@@ -33,7 +33,7 @@ quote = "Entry identity: **(relative path, size, mtime)**"
 id = "R-CATALOG-004"
 section = "§3.2"
 area = "CATALOG"
-status = "deferred"
+status = "active"
 quote = "The catalog is enumerated **once**, at session start, and held frozen in RAM"
 note = "A reconnection re-sends this same catalog, so a re-diff can only shrink the work."
 
@@ -41,7 +41,7 @@ note = "A reconnection re-sends this same catalog, so a re-diff can only shrink 
 id = "R-CATALOG-005"
 section = "§3.2"
 area = "CATALOG"
-status = "deferred"
+status = "active"
 quote = "No upfront hashing"
 
 [[requirement]]
@@ -501,7 +501,7 @@ quote = "First connection displays a short code on the desktop screen"
 id = "R-PAIR-002"
 section = "§5.2"
 area = "PAIR"
-status = "deferred"
+status = "active"
 quote = "The phone stores exactly **one** paired desktop."
 
 [[requirement]]

@@ -319,6 +319,15 @@ impl Phone {
         });
     }
 
+    /// What this phone would do with one candidate, without a session around it.
+    ///
+    /// The shared vectors of `verification/vectors/` ask both implementations the same
+    /// questions, and this is how they are put to this one.
+    #[must_use]
+    pub fn would(&self, candidate: &DeletionCandidate) -> DeletionResult {
+        self.check(candidate)
+    }
+
     /// Runs the gates of `SPEC.md` §8 over what the desktop offered. A photo that no longer
     /// matches what the desktop verified is kept and reported, never deleted.
     fn decide(&self, offered: &[DeletionCandidate]) -> Vec<DeletionOutcome> {

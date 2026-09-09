@@ -52,6 +52,7 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.add(formatting(&desktop)?);
     report.add(lints(&desktop)?);
     report.add(unit_tests(&desktop)?);
+    report.add(phone_tests(root)?);
     let (check, failures) = scenarios(root, scenario::Against::Simulation, "scenarios")?;
     report.add(check);
     report.blame(failures);
@@ -85,6 +86,30 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
 
     report.finish(&workspace::reports_directory(root))?;
     Ok(report.passed())
+}
+
+/// The phone's own tests, which run on a plain JVM.
+///
+/// Half of `SPEC.md` is the phone's, and the session state machine holds no Android type
+/// precisely so that half can be checked here rather than on a device. A machine with no JDK
+/// skips this and says so: a skipped check is not a passing one, and the report shows the
+/// difference.
+fn phone_tests(root: &Path) -> Result<CheckResult, String> {
+    let android = root.join("android");
+    let wrapper = android.join("gradlew");
+    if !wrapper.is_file() {
+        return Ok(CheckResult::skipped(
+            "phone tests",
+            "the Gradle wrapper is not there",
+        ));
+    }
+
+    let passed = tools::run("./gradlew", &["--quiet", ":session:test"], &android)?;
+    Ok(CheckResult::from_outcome(
+        "phone tests",
+        passed,
+        "the phone's session state machine failed its own tests",
+    ))
 }
 
 fn formatting(desktop: &Path) -> Result<CheckResult, String> {

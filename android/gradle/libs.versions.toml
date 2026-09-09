@@ -1,10 +1,57 @@
-# Toolchain versions were the latest stable releases when the project was created. The Android
-# SDK platform is not installed yet, so `compileSdk` is confirmed at the first build.
+# Toolchain versions are the latest stable releases. The Android SDK platform is not installed
+# on the development machine, so `compileSdk` is confirmed the first time the application module
+# is built somewhere that has one.
 [versions]
 agp = "9.4.0"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
+androidx-core = "1.17.0"
+androidx-activity = "1.11.0"
+compose-bom = "2025.10.00"
+lifecycle = "2.9.4"
+androidx-test-runner = "1.7.0"
+androidx-test-ext = "1.3.0"
+protobuf-plugin = "0.9.6"
+protobuf = "4.33.1"
+grpc = "1.78.0"
+grpc-kotlin = "1.5.0"
+coroutines = "1.11.0"
+javax-annotation = "1.3.2"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc" }
+grpc-protobuf-lite = { module = "io.grpc:grpc-protobuf-lite", version.ref = "grpc" }
+grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
+grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+javax-annotation = { module = "javax.annotation:javax.annotation-api", version.ref = "javax-annotation" }
+
+[libraries.protoc]
+module = "com.google.protobuf:protoc"
+version.ref = "protobuf"
+
+[libraries.grpc-protoc-java]
+module = "io.grpc:protoc-gen-grpc-java"
+version.ref = "grpc"
+
+[libraries.grpc-protoc-kotlin]
+module = "io.grpc:protoc-gen-grpc-kotlin"
+version.ref = "grpc-kotlin"

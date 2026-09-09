@@ -25,3 +25,11 @@
 .idea/
 .vscode/
 *.swp
+
+# Android build output and local SDK pointers. A JVM that runs out of metaspace leaves an
+# 800 MB heap dump beside the build; it is never wanted, and GitHub refuses it outright.
+*.hprof
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties

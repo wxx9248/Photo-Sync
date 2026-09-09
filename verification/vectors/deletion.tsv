@@ -1,0 +1,27 @@
+# The deletion gates of SPEC.md §8, as cases both ends have to decide the same way.
+#
+# This is the one decision made on the phone that can destroy something, so it is written down
+# once and checked against both implementations rather than trusted to two readings of the same
+# paragraph. The Rust simulator's phone and the Kotlin session module each run every line.
+#
+# Columns, tab separated:
+#   name              what the case is
+#   origin            this-transfer | earlier — which gate §8 demands
+#   candidate_size    the size the desktop stated
+#   candidate_mtime   the time the desktop stated
+#   vault_content     the bytes the desktop verified; its sha256 is the expected digest
+#   local_present     yes | no — whether the phone still has the file
+#   local_mtime       the time the phone's copy carries
+#   local_content     the bytes the phone holds now
+#   expect            deleted | kept-changed | failed
+#
+# A case that is kept is never a failure of the protocol: §8's whole failure analysis is that
+# desktop state, however stale or forged, can cause under-deletion and never a wrong deletion.
+name	origin	candidate_size	candidate_mtime	vault_content	local_present	local_mtime	local_content	expect
+committed this session and untouched	this-transfer	27	1756000000	the bytes of one photograph	yes	1756000000	the bytes of one photograph	deleted
+committed this session, written over since	this-transfer	27	1756000000	the bytes of one photograph	yes	1756000060	the bytes of one photograph	kept-changed
+committed this session, a different length now	this-transfer	27	1756000000	the bytes of one photograph	yes	1756000000	a shorter photograph	kept-changed
+imported earlier and still the same photograph	earlier	19	1756000000	an older photograph	yes	1756000000	an older photograph	deleted
+imported earlier, same size and time, other bytes	earlier	19	1756000000	an older photograph	yes	1756000000	another photograph!	kept-changed
+imported earlier, written over since	earlier	19	1756000000	an older photograph	yes	1756000060	an older photograph	kept-changed
+gone from the phone already	this-transfer	27	1756000000	the bytes of one photograph	no	0		failed

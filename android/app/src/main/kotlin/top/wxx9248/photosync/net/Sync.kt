@@ -1,0 +1,51 @@
+package top.wxx9248.photosync.net
+
+import android.content.Context
+import top.wxx9248.photosync.media.MediaStoreLibrary
+import top.wxx9248.photosync.session.DeviceId
+import top.wxx9248.photosync.session.Outcome
+import top.wxx9248.photosync.session.PairedDesktop
+import top.wxx9248.photosync.session.Session
+
+/**
+ * One session, from finding the desktop to the summary.
+ *
+ * Everything that decides anything is in the `session` module and everything that touches the
+ * platform is in the classes this uses. What is left here is the order the two go in, which is
+ * short enough to read in one sitting — and that is the point of the split.
+ */
+class Sync(
+    private val context: Context,
+    private val identity: Identity,
+    private val deviceName: String,
+) {
+    /**
+     * Runs a session against the desktop this phone is paired with.
+     *
+     * Returns null when no desktop answered, which §5.1 treats as "is the computer on?"
+     * rather than as a failure.
+     */
+    suspend fun run(paired: PairedDesktop): Outcome? {
+        val address = Discovery(context).find() ?: return null
+
+        val library = MediaStoreLibrary(context.contentResolver)
+        // Enumerated once, here, and frozen for the whole session including any reconnect.
+        // §3.2.
+        val catalog = library.catalog()
+
+        val session = Session(
+            device = DeviceId(identity.publicKeyPin().take(16)),
+            name = deviceName,
+            catalog = catalog,
+            library = library,
+        )
+
+        GrpcDesktop.connect(address, identity, paired.publicKey).use { desktop ->
+            while (session.outcome == null) {
+                val said = session.next() ?: break
+                desktop.say(said)?.let { session.receive(it) }
+            }
+        }
+        return session.outcome
+    }
+}
