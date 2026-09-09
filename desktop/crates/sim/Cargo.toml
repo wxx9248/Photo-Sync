@@ -12,3 +12,6 @@ photo-sync-model.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+photo-sync-vectors.workspace = true

@@ -7,6 +7,7 @@ members = [
     "crates/protocol",
     "crates/shell",
     "crates/testclient",
+    "crates/vectors",
     "crates/xtask",
 ]
 
@@ -23,6 +24,7 @@ photo-sync-model = { path = "crates/model" }
 photo-sync-protocol = { path = "crates/protocol" }
 photo-sync-sim = { path = "crates/sim" }
 photo-sync-testclient = { path = "crates/testclient" }
+photo-sync-vectors = { path = "crates/vectors" }
 
 proptest = "1.11.0"
 prost = "0.14.4"

@@ -12,6 +12,7 @@ use photo_sync_core::effect::{CandidateOrigin, DeletionCandidate};
 use photo_sync_core::event::DeletionResult;
 use photo_sync_core::id::{DevicePath, Sha256, Timestamp};
 use photo_sync_sim::{Phone, PhoneFile};
+use photo_sync_vectors::Case;
 
 fn digest_of(bytes: &[u8]) -> Sha256 {
     let mut running = RunningDigest::new();
@@ -23,47 +24,49 @@ fn path() -> DevicePath {
     DevicePath::new("DCIM/Camera/IMG_0001.jpg")
 }
 
-/// Every case in the file, as a map from column name to value.
-fn cases() -> Vec<Vec<(String, String)>> {
-    let file = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../verification/vectors/deletion.tsv"
-    );
-    let text = match std::fs::read_to_string(file) {
-        Ok(text) => text,
-        Err(error) => panic!("cannot read {file}: {error}"),
-    };
-
-    let mut lines = text
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.trim().is_empty());
-    let columns: Vec<String> = match lines.next() {
-        Some(header) => header.split('\t').map(str::to_string).collect(),
-        None => panic!("the vectors have no header"),
-    };
-
-    lines
-        .map(|line| {
-            columns
-                .iter()
-                .cloned()
-                .zip(line.split('\t').map(str::to_string))
-                .collect()
-        })
-        .collect()
+/// The phone the case describes: holding the photograph, or no longer holding it.
+fn phone_for(case: &Case) -> Phone {
+    let mut phone = Phone::new("phone-a", "Kitchen phone");
+    if case.field("local_present") == "yes" {
+        phone.files.insert(
+            path(),
+            PhoneFile::new(
+                case.number("local_mtime"),
+                case.field("local_content").as_bytes().to_vec(),
+            ),
+        );
+    }
+    phone
 }
 
-fn field<'a>(case: &'a [(String, String)], name: &str) -> &'a str {
-    match case.iter().find(|(column, _)| column == name) {
-        Some((_, value)) => value,
-        None => panic!("the vectors have no column {name}"),
+/// What the desktop is offering to have deleted.
+fn candidate_of(case: &Case) -> DeletionCandidate {
+    DeletionCandidate {
+        path: path(),
+        size: case.number("candidate_size"),
+        mtime: Timestamp(case.number("candidate_mtime")),
+        expected: digest_of(case.field("vault_content").as_bytes()),
+        origin: match case.field("origin") {
+            "this-transfer" => CandidateOrigin::ThisTransfer,
+            "earlier" => CandidateOrigin::Earlier,
+            other => panic!("{}: no such origin: {other}", case.name()),
+        },
+    }
+}
+
+fn expected_of(case: &Case) -> DeletionResult {
+    match case.field("expect") {
+        "deleted" => DeletionResult::Deleted,
+        "kept-changed" => DeletionResult::KeptChanged,
+        "failed" => DeletionResult::Failed,
+        other => panic!("{}: no such outcome: {other}", case.name()),
     }
 }
 
 #[test]
 fn every_shared_case_is_decided_the_way_it_is_written_down() {
     covers!("R-DELETE-006", "R-DELETE-007", "R-DELETE-008");
-    let cases = cases();
+    let cases = photo_sync_vectors::read("deletion.tsv");
     assert!(
         cases.len() >= 6,
         "the vectors were not read: {}",
@@ -71,45 +74,11 @@ fn every_shared_case_is_decided_the_way_it_is_written_down() {
     );
 
     for case in &cases {
-        let name = field(case, "name");
-        let mut phone = Phone::new("phone-a", "Kitchen phone");
-        if field(case, "local_present") == "yes" {
-            phone.files.insert(
-                path(),
-                PhoneFile::new(
-                    field(case, "local_mtime")
-                        .parse()
-                        .unwrap_or_else(|_| panic!("{name}: the local time is not a number")),
-                    field(case, "local_content").as_bytes().to_vec(),
-                ),
-            );
-        }
-
-        let candidate = DeletionCandidate {
-            path: path(),
-            size: field(case, "candidate_size")
-                .parse()
-                .unwrap_or_else(|_| panic!("{name}: the size is not a number")),
-            mtime: Timestamp(
-                field(case, "candidate_mtime")
-                    .parse()
-                    .unwrap_or_else(|_| panic!("{name}: the time is not a number")),
-            ),
-            expected: digest_of(field(case, "vault_content").as_bytes()),
-            origin: match field(case, "origin") {
-                "this-transfer" => CandidateOrigin::ThisTransfer,
-                "earlier" => CandidateOrigin::Earlier,
-                other => panic!("{name}: no such origin: {other}"),
-            },
-        };
-
-        let expected = match field(case, "expect") {
-            "deleted" => DeletionResult::Deleted,
-            "kept-changed" => DeletionResult::KeptChanged,
-            "failed" => DeletionResult::Failed,
-            other => panic!("{name}: no such outcome: {other}"),
-        };
-
-        assert_eq!(phone.would(&candidate), expected, "{name}");
+        assert_eq!(
+            phone_for(case).would(&candidate_of(case)),
+            expected_of(case),
+            "{}",
+            case.name()
+        );
     }
 }

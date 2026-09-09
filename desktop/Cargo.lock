@@ -3927,6 +3927,7 @@ dependencies = [
  "photo-sync-core",
  "photo-sync-protocol",
  "photo-sync-sim",
+ "photo-sync-vectors",
  "rcgen",
  "refinery",
  "rusqlite",
@@ -3980,6 +3981,7 @@ version = "0.1.0"
 dependencies = [
  "photo-sync-core",
  "photo-sync-model",
+ "photo-sync-vectors",
  "proptest",
 ]
 
@@ -3998,6 +4000,10 @@ dependencies = [
  "tonic",
  "tower",
 ]
+
+[[package]]
+name = "photo-sync-vectors"
+version = "0.1.0"
 
 [[package]]
 name = "pico-args"

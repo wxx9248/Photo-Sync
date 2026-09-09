@@ -34,6 +34,7 @@ ksni = { version = "0.3", features = ["blocking"] }
 workspace = true
 
 [dev-dependencies]
+photo-sync-vectors.workspace = true
 photo-sync-sim.workspace = true
 
 [build-dependencies]
