@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import top.wxx9248.photosync.session.verification.Covers
 
@@ -15,6 +16,15 @@ private fun phone(library: FakeLibrary) =
 
 private fun oneLibrary(): FakeLibrary =
     FakeLibrary(mapOf("DCIM/Camera/IMG_0001.jpg" to (MTIME to PHOTO)))
+
+/**
+ * What the session says next, when a test has already established there is something to say.
+ *
+ * A session with nothing left to say is a failure of the step before, and saying so here
+ * names it. Rule 9.5 holds tests to K5: `!!` reports it as a null pointer instead.
+ */
+private fun saying(session: Session): Outbound =
+    assertNotNull(session.next(), "the session had nothing to say")
 
 class SessionTest {
     @Test
@@ -97,9 +107,9 @@ class SessionTest {
         // Up to and including the diff, §3.2 promises no hashing: a library of fifty thousand
         // photographs would otherwise be read end to end before anything moved.
         session.receive(Inbound.HandshakeAccepted("Kitchen iMac", false))
-        desktop.answer(session.next()!!)
+        desktop.answer(saying(session))
         session.receive(Inbound.CatalogAcknowledged)
-        desktop.answer(session.next()!!)
+        desktop.answer(saying(session))
         assertEquals(0, library.digests, "the phone hashed something before it was asked to")
 
         play(session, desktop)
