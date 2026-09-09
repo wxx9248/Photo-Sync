@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as each milestone goes. M3 is closed.
+Written at the close of milestone M1, and added to as each milestone goes. M4 is closed.
 
 ## 1. Run these once
 
@@ -209,3 +209,52 @@ diffs against, is active and verified.
   The real stack proves the half of it that a socket can: `a_transfer_cut_short_carries_on_from
   _the_watermark_over_a_socket` sends part of a file, drops the stream, and finds those bytes on
   the desktop's disk and offered back on the next diff.
+
+## 9. What M4 changed, and one question for you
+
+M4 closed. Every `R-COMMIT-*`, `R-RECOVER-*` and `R-INDEX-*` is active and verified, a commit
+can now be crashed anywhere in §7.3 rather than at one chosen point, and the sabotage set has
+grown from five wrong desktops to nine.
+
+**Crashes are placed by counting now.** The campaign used to stop a commit just before the
+first rename, which is one power-off point out of the twenty-odd that §7.4 promises to survive.
+A seed now says how many of the commit's steps happened before the power went, which reaches
+places no named effect can: between two store writes of the same kind, part-way through a group
+of renames, and between the two halves of a clear. It found a disagreement on its first run and
+the desktop was right; the model was insisting a commit had happened when §7.4 allows it not to
+have. Nothing in the product changed.
+
+**Four more rules can now be seen breaking.** Renaming before the write-log is sealed, clearing
+staging before the index rows are durable, clearing the manifest before the write-log, and
+carrying on past a rename that failed. Each is a real desktop built behind a feature flag, and
+each is caught. Two of them needed tests that did not exist, so a commit whose vault refuses
+the rename is now known to stop where it stands and be finished by recovery afterwards.
+
+### The question
+
+`SPEC.md` §7.4 ends with an assumption: recovery assumes the vault has a single writer, because
+"already present at the target ⇒ our own completed rename" is sound only if nothing else creates
+files there. **The desktop never makes that inference.** It decides from the staged file rather
+than from the target, so a file that appeared at a reserved name while the machine was down is
+renamed over, and the photograph wins. The test
+`a_photograph_is_not_given_up_for_whatever_sits_at_its_name` pins that.
+
+This is safer than the specification's own reasoning in the direction that matters, and it costs
+the intruding file instead. Two things follow, and both are yours to decide:
+
+1. Whether §7.4's parenthetical should be reworded, since it justifies the design by an
+   inference the code does not make. Nothing behaves wrongly either way; the prose is a
+   rationale, not a rule, which is why it has not been touched.
+2. Whether overwriting a stranger's file is what you want if a vault ever ends up somewhere with
+   more than one writer — a synced folder, a network share. Today it is, and the alternative
+   (stop and ask) is a feature nobody has specified.
+
+### Still open
+
+* The SQLite virtual file system of §5. Nothing changed there.
+* Capture-time extraction still needs `nom-exif` and a timezone database.
+* Noticing *which* files are stranded is the other half of §7.5's escape hatch and belongs to
+  the interface in M7. The action it will call — dropping the row so the next diff re-sends the
+  file — is built and tested.
+* The throughput question from §8 above still stands, and now matters slightly more: crash
+  recovery reads every unverified partial back at startup.

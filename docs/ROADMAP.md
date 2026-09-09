@@ -15,7 +15,7 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0, M1, M2 and M3 are complete. The work in progress is **M4**.
+M0 through M4 are complete. The work in progress is **M5**.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -26,6 +26,12 @@ and `-005` are `SPEC.md` §3.2 — the `DCIM/Camera` bucket, `IS_PENDING`, the f
 and no upfront hashing — which are things the phone does and nothing on the desktop can
 observe. They close with M8, where the Kotlin session core is written. `R-CATALOG-003`, the
 entry identity the desktop diffs against, is active and verified here.
+
+M4 closed with one ordering rule of `SPEC.md` §7.3 tested but not sabotaged. Index rows go in
+before the commit lock is released, which is what lets the next commit's map see them; two
+phones that staged one photograph before either committed prove the behaviour. Inverting the
+rule needs two commits actually running against one another, so its negative control waits for
+the multi-device campaign in M6.
 
 ### M0 Foundation
 
