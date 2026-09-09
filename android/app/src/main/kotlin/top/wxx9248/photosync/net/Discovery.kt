@@ -3,6 +3,8 @@ package top.wxx9248.photosync.net
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -79,12 +81,28 @@ internal class Discovery(context: Context) {
 
         override fun onServiceResolved(info: NsdServiceInfo?) {
             val resolved = info ?: return
-            val host = resolved.hostAddresses.firstOrNull() ?: return
+            val host = resolved.address ?: return
             answer(InetSocketAddress(host, resolved.port))
         }
     }
 
     companion object {
+        /**
+         * Where a resolved service actually is.
+         *
+         * `hostAddresses` is the one to use and it is not on every phone this application
+         * supports: it arrived in Android 14, and on Android 13 only with the seventh
+         * Tiramisu extension. `SPEC.md` §3.1 starts at Android 12, so the older call is what
+         * the floor of that range has. Both return the same address.
+         */
+        private val NsdServiceInfo.address: InetAddress?
+            get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                hostAddresses.firstOrNull()
+            } else {
+                @Suppress("DEPRECATION")
+                host
+            }
+
         /** What the desktop advertises. Fixed by §5.1 and matched exactly. */
         const val SERVICE_TYPE: String = "_photosync._tcp"
 
