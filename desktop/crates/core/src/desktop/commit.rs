@@ -478,6 +478,12 @@ impl Desktop {
         let start = running.next;
         let end = (start + GROUP).min(running.plan.entries.len());
         if start >= end {
+            // SABOTAGE: the index rows wait until after the commit lock is released. See
+            // `finish`, which is where they go in instead.
+            #[cfg(feature = "sabotage-lockrelease")]
+            return self.clear(Step::ClearLog);
+
+            #[cfg(not(feature = "sabotage-lockrelease"))]
             return self.insert_rows();
         }
 
@@ -637,6 +643,22 @@ impl Desktop {
             },
         ));
         effects.extend(self.start_next_commit());
+
+        // SABOTAGE: this batch's index rows go in only now, after the next commit has been
+        // let go. That commit builds its map against an index that has never heard of this
+        // batch, so content two phones both hold is written into the vault twice.
+        #[cfg(feature = "sabotage-lockrelease")]
+        {
+            let op = self.begin(Pending::Commit(Step::InsertRows));
+            effects.push(Effect::Store {
+                op,
+                request: StoreRequest::InsertCommittedBatch {
+                    contents: running.plan.contents.clone(),
+                    device_files: running.plan.device_files.clone(),
+                },
+            });
+        }
+
         effects
     }
 

@@ -24,6 +24,7 @@ sabotage-seal = []
 sabotage-rowsfirst = []
 sabotage-clearorder = []
 sabotage-halt = []
+sabotage-lockrelease = []
 
 [lints]
 workspace = true

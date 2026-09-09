@@ -30,7 +30,10 @@ const NOW: Moment = Moment {
     },
 };
 
-const DEVICE: &str = "phone-a";
+/// The phones a run has to choose between. `SPEC.md` §7.3 serializes commits across
+/// devices and dedups one device's content against another's through the index, so a
+/// campaign with one phone leaves both of those claims to hand-written tests.
+const DEVICES: [&str; 2] = ["phone-a", "phone-b"];
 
 /// The alphabet a run is made of. `docs/VERIFICATION.md` §L3 lists what belongs here; these
 /// are the ones the simulator can arrange today.
@@ -54,6 +57,10 @@ pub enum Op {
     /// The camera writes over a photograph after the desktop has offered it for deletion,
     /// which is what the two gates of `SPEC.md` §8 stand between.
     EditBeforeDeleting(u8),
+
+    /// Everything after this addresses the other phone. A run is a family with two of them,
+    /// and which one is holding the desktop's attention is the interesting part.
+    OtherPhone,
 
     /// The phone syncs.
     Sync,
@@ -81,6 +88,7 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
         2 => (0u8..6).prop_map(Op::EditBeforeDeleting),
         3 => ((0u8..6), (0u8..6)).prop_map(|(from, to)| Op::Copy(from, to)),
         6 => Just(Op::Sync),
+        3 => Just(Op::OtherPhone),
         2 => Just(Op::Restart),
         2 => (0u8..28).prop_map(Op::CrashCommitting),
         1 => (0u8..6).prop_map(Op::Curate),
@@ -157,22 +165,26 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
     sim.start();
     sim.take_log();
 
-    let mut phone = Phone::new(DEVICE, "Campaign phone");
+    let mut phones = [
+        Phone::new(DEVICES[0], "Kitchen phone"),
+        Phone::new(DEVICES[1], "Hallway phone"),
+    ];
+    let mut at = 0usize;
     let mut generation: u8 = 0;
 
     for op in ops {
         match op {
             Op::Photograph(which) => {
-                phone.files.insert(
+                phones[at].files.insert(
                     path_for(*which),
                     PhoneFile::new(mtime_for(*which, generation), contents(*which, 0)),
                 );
             }
             Op::Edit(which) => {
                 let path = path_for(*which);
-                if phone.files.contains_key(&path) {
+                if phones[at].files.contains_key(&path) {
                     generation = generation.wrapping_add(1);
-                    phone.files.insert(
+                    phones[at].files.insert(
                         path,
                         PhoneFile::new(mtime_for(*which, generation), contents(*which, generation)),
                     );
@@ -180,46 +192,47 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
             }
             Op::Copy(from, to) => {
                 if from != to
-                    && let Some(held) = phone.files.get(&path_for(*from)).cloned()
+                    && let Some(held) = phones[at].files.get(&path_for(*from)).cloned()
                 {
-                    phone.files.insert(path_for(*to), held);
+                    phones[at].files.insert(path_for(*to), held);
                 }
             }
             Op::EditWhileSending(which) => {
                 let path = path_for(*which);
-                if phone.files.contains_key(&path) {
+                if phones[at].files.contains_key(&path) {
                     generation = generation.wrapping_add(1);
-                    phone.edit_after_diff = Some((
+                    phones[at].edit_after_diff = Some((
                         path,
                         PhoneFile::new(mtime_for(*which, generation), contents(*which, generation)),
                     ));
                 }
-                phone.run_session(&mut sim);
-                phone.edit_after_diff = None;
+                phones[at].run_session(&mut sim);
+                phones[at].edit_after_diff = None;
             }
             Op::EditBeforeDeleting(which) => {
                 let path = path_for(*which);
-                if phone.files.contains_key(&path) {
+                if phones[at].files.contains_key(&path) {
                     generation = generation.wrapping_add(1);
-                    phone.edit_before_deleting = Some((
+                    phones[at].edit_before_deleting = Some((
                         path,
                         PhoneFile::new(mtime_for(*which, generation), contents(*which, generation)),
                     ));
                 }
-                phone.run_session(&mut sim);
-                phone.edit_before_deleting = None;
+                phones[at].run_session(&mut sim);
+                phones[at].edit_before_deleting = None;
             }
+            Op::OtherPhone => at = (at + 1) % DEVICES.len(),
             Op::Sync => {
-                phone.run_session(&mut sim);
+                phones[at].run_session(&mut sim);
             }
             Op::Restart => sim.restart(),
             Op::CrashCommitting(after) => {
                 // Get the photographs across, then take the machine away part-way through
                 // putting them into the vault. How far it got is the seed's to choose.
-                phone.run_session_until_commit(&mut sim);
+                phones[at].run_session_until_commit(&mut sim);
                 sim.deliver_stopping_after(
                     Event::FinishRequested {
-                        device: DeviceId::new(DEVICE),
+                        device: DeviceId::new(DEVICES[at]),
                     },
                     usize::from(*after),
                 );
@@ -227,7 +240,7 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
             }
             Op::FillDisk(after) => {
                 sim.faults.refuse_write_after = Some(usize::from(*after));
-                phone.run_session(&mut sim);
+                phones[at].run_session(&mut sim);
                 sim.faults.refuse_write_after = None;
             }
             Op::Curate(which) => {

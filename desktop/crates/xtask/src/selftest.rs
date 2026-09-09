@@ -27,7 +27,7 @@ struct Control {
     breaks: &'static str,
 }
 
-const CONTROLS: [Control; 9] = [
+const CONTROLS: [Control; 10] = [
     Control {
         how: Arrange::Sabotage("sabotage-donemark"),
         breaks: "§7.3: a done-mark written before the directories are durable",
@@ -59,6 +59,10 @@ const CONTROLS: [Control; 9] = [
     Control {
         how: Arrange::Sabotage("sabotage-halt"),
         breaks: "§7.3: a commit carrying on past a rename it could not make",
+    },
+    Control {
+        how: Arrange::Sabotage("sabotage-lockrelease"),
+        breaks: "§7.3: index rows going in after the commit lock was released",
     },
     Control {
         how: Arrange::Lie("PHOTO_SYNC_LYING_FSYNC"),
