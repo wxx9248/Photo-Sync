@@ -257,10 +257,14 @@ error naming the offending line, never a silently ignored field.
 agent runs is stable. Pure Rust orchestration; it shells out to Gradle for the Kotlin tiers and
 needs nothing installed beyond the toolchains in `STACK.md`.
 
+The session module builds on a plain JVM, so its tests run wherever a JDK does. The application
+module needs the Android SDK, and a machine without one skips those three checks rather than
+failing them. `./verify doctor` says which of the two a machine is.
+
 | Tier | Contents | Budget |
 |---|---|---|
 | `quick` | core unit tests, model differential on the committed corpus, all scenarios in sim, `spec-check`, clippy, fmt | < 30 s |
-| `full` | + 256-seed campaign, real-bytes E2E, Kotlin JVM tests, conformance vectors, descriptor check, requirement matrix gate | < 5 min |
+| `full` | + 256-seed campaign, real-bytes E2E, Kotlin JVM tests, the application module's build, unit tests and Android Lint, conformance vectors, descriptor check, requirement matrix gate | < 5 min |
 | `nightly` | + long campaign, `cargo-mutants`, Android managed-device suite, `cargo-deny`, `cargo-audit`, performance metrics | hours |
 
 **Reports.** Every run writes `verification/reports/latest.json` (plus a timestamped copy):

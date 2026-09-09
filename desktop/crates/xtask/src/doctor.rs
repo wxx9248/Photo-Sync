@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use crate::tools;
+use crate::{tools, workspace};
 
 /// What a missing tool costs. Ordered so the earliest tier appears first in the summary.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -108,9 +108,9 @@ fn collect(root: &Path) -> Vec<Check> {
         tool(
             "java",
             Need::Android,
-            "install a JDK 21, see docs/DEVELOPMENT.md",
+            "install a JDK 25, see docs/DEVELOPMENT.md",
         ),
-        android_sdk(),
+        android_sdk(root),
         hooks(root),
     ]
 }
@@ -138,16 +138,11 @@ fn subcommand(
     }
 }
 
-fn android_sdk() -> Check {
-    let found = ["ANDROID_HOME", "ANDROID_SDK_ROOT"]
-        .iter()
-        .find_map(|variable| std::env::var(variable).ok())
-        .filter(|path| Path::new(path).is_dir());
-
+fn android_sdk(root: &Path) -> Check {
     Check {
         name: "android sdk",
         need: Need::Android,
-        found,
+        found: workspace::android_sdk(root).map(|path| path.display().to_string()),
         fix: "install the command line tools and set ANDROID_HOME",
     }
 }

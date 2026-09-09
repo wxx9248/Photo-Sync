@@ -33,3 +33,26 @@ pub(crate) fn corpus_directory(root: &Path) -> PathBuf {
 pub(crate) fn scenarios_directory(root: &Path) -> PathBuf {
     root.join("verification/scenarios")
 }
+
+/// Where the Android SDK is, if this machine has one.
+///
+/// The application module needs it and the session module does not, so it is asked about
+/// rather than assumed. A machine that told Gradle through `local.properties` counts as
+/// having one, because that is where Gradle itself looks.
+pub(crate) fn android_sdk(root: &Path) -> Option<PathBuf> {
+    let configured = ["ANDROID_HOME", "ANDROID_SDK_ROOT"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .find(|path| path.is_dir());
+    if configured.is_some() {
+        return configured;
+    }
+
+    let properties = std::fs::read_to_string(root.join("android/local.properties")).ok()?;
+    properties
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("sdk.dir="))
+        .map(PathBuf::from)
+        .find(|path| path.is_dir())
+}

@@ -65,6 +65,16 @@ $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
     "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 ```
 
+Gradle finds the SDK through `ANDROID_HOME`, or through `android/local.properties` if you would
+rather not export it in every shell:
+
+```sh
+echo "sdk.dir=$HOME/Android/sdk" > android/local.properties
+```
+
+That file is per-machine and is not committed. Without either, `./verify` skips the three
+application-module checks and says so.
+
 Then clone and check the setup:
 
 ```sh

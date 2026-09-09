@@ -53,6 +53,11 @@ pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.add(lints(&desktop)?);
     report.add(unit_tests(&desktop)?);
     report.add(phone_tests(root)?);
+    if matches!(tier, Tier::Full | Tier::Nightly) {
+        for check in phone_application(root)? {
+            report.add(check);
+        }
+    }
     let (check, failures) = scenarios(root, scenario::Against::Simulation, "scenarios")?;
     report.add(check);
     report.blame(failures);
@@ -110,6 +115,62 @@ fn phone_tests(root: &Path) -> Result<CheckResult, String> {
         passed,
         "the phone's session state machine failed its own tests",
     ))
+}
+
+/// The phone's application module: that it builds, that its own unit tests pass, and that
+/// Android Lint is content with it.
+///
+/// This is the one part of the repository that needs a toolchain the rest does not, so a
+/// machine with no Android SDK skips all three and says so. They run from the full tier rather
+/// than the quick one: an Android build is measured in tens of seconds and the quick tier is
+/// given thirty.
+///
+/// Lint is here because it knows things the compiler does not. `minSdk` is 31, and a call that
+/// only exists on later phones compiles perfectly and throws on the oldest one this
+/// application supports.
+fn phone_application(root: &Path) -> Result<Vec<CheckResult>, String> {
+    let android = root.join("android");
+    if !android.join("gradlew").is_file() {
+        return Ok(skipped_application("the Gradle wrapper is not there"));
+    }
+    if workspace::android_sdk(root).is_none() {
+        return Ok(skipped_application(
+            "there is no Android SDK here, see docs/DEVELOPMENT.md",
+        ));
+    }
+
+    let mut checks = Vec::new();
+    for (name, task, failure) in APPLICATION_CHECKS {
+        let passed = tools::run("./gradlew", &["--quiet", task], &android)?;
+        checks.push(CheckResult::from_outcome(name, passed, failure));
+    }
+    Ok(checks)
+}
+
+/// One Gradle task each, so a failure names which of the three went wrong.
+const APPLICATION_CHECKS: [(&str, &str, &str); 3] = [
+    (
+        "phone application",
+        ":app:assembleDebug",
+        "the phone's application module does not build",
+    ),
+    (
+        "phone application tests",
+        ":app:testDebugUnitTest",
+        "the phone's application module failed its own tests",
+    ),
+    (
+        "phone lint",
+        ":app:lintDebug",
+        "android lint found an error in the phone's application module",
+    ),
+];
+
+fn skipped_application(why: &str) -> Vec<CheckResult> {
+    APPLICATION_CHECKS
+        .iter()
+        .map(|(name, _, _)| CheckResult::skipped(name, why))
+        .collect()
 }
 
 fn formatting(desktop: &Path) -> Result<CheckResult, String> {

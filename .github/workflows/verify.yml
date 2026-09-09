@@ -32,6 +32,19 @@ jobs:
           distribution: temurin
           java-version: '25'
 
+      # `./verify full` builds the application module, runs its unit tests and runs Android
+      # Lint over it, all of which need the SDK. The hosted image ships one, but naming the
+      # packages here is what makes the build the same on a runner whose image changed.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      # Gradle downloads the wrapper, the plugins and the dependencies on a cold runner, and
+      # there are now three Android tasks rather than one JVM one.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: android
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
