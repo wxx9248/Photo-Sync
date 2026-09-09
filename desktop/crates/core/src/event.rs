@@ -90,6 +90,17 @@ pub enum Event {
         device: DeviceId,
     },
 
+    /// Somebody asked for a photograph to be taken again from scratch.
+    ///
+    /// `SPEC.md` §7.5 calls this the escape hatch for a stranded file: a row that matches
+    /// what the phone holds keeps the diff classifying it as imported forever, while the
+    /// deletion gate correctly refuses to free it. Dropping the row is what breaks the
+    /// deadlock, and the next diff sends the file.
+    ForceReimportRequested {
+        device: DeviceId,
+        path: DevicePath,
+    },
+
     StorageOpCompleted {
         op: OpId,
         result: Result<StorageOutcome, StorageError>,

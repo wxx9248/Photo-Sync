@@ -193,6 +193,7 @@ impl Model {
             Event::PeerConnected { .. }
             | Event::PeerDisconnected { .. }
             | Event::DiffRequested { .. }
+            | Event::ForceReimportRequested { .. }
             | Event::TimerFired { .. }
             | Event::StorageOpCompleted { .. }
             | Event::StoreOpCompleted { .. }

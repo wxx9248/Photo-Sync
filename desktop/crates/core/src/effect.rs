@@ -274,4 +274,10 @@ pub enum UiUpdate {
         device: DeviceId,
         message: String,
     },
+
+    /// A stranded file's row has been dropped; the next diff will send it again.
+    Forgotten {
+        device: DeviceId,
+        path: DevicePath,
+    },
 }

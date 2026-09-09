@@ -18,7 +18,7 @@ use commit::{Answer, Running, Step};
 
 use crate::catalog::{Catalog, CatalogEntry};
 use crate::digest::RunningDigest;
-use crate::effect::{Directory, Effect, LogLevel, RejectReason, ToSend, UploadOutcome};
+use crate::effect::{Directory, Effect, LogLevel, RejectReason, ToSend, UiUpdate, UploadOutcome};
 use crate::event::{Event, StorageOutcome};
 use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp};
 use crate::naming::CivilTime;
@@ -174,6 +174,12 @@ enum Pending {
     NominationRows {
         device: DeviceId,
     },
+
+    /// A row being dropped so its photograph is sent again. `SPEC.md` §7.5.
+    ForgetRow {
+        device: DeviceId,
+        path: DevicePath,
+    },
     NominationStat {
         device: DeviceId,
         row: Box<crate::store::DeviceFileRow>,
@@ -286,6 +292,7 @@ impl Desktop {
             Event::FinishRequested { device } | Event::ManualCommitRequested { device } => {
                 self.enqueue_commit(&device)
             }
+            Event::ForceReimportRequested { device, path } => self.force_reimport(&device, path),
             Event::DeletionsReported { device, outcomes } => {
                 self.deletions_reported(&device, &outcomes)
             }
@@ -807,6 +814,25 @@ impl Desktop {
         };
 
         self.open_upload(device, file, &planned, offset, digest)
+    }
+
+    /// Drops the index row for one file so the next diff sends it again. `SPEC.md` §7.5.
+    ///
+    /// Nothing else is undone. The content row stays, because the vault copy it names is
+    /// still there and still stands for that content; what is wrong is this device's claim
+    /// to have that photograph backed up, and that is the row being dropped.
+    fn force_reimport(&mut self, device: &DeviceId, path: DevicePath) -> Vec<Effect> {
+        let op = self.begin(Pending::ForgetRow {
+            device: device.clone(),
+            path: path.clone(),
+        });
+        vec![Effect::Store {
+            op,
+            request: StoreRequest::ForgetDeviceFile {
+                device: device.clone(),
+                path,
+            },
+        }]
     }
 
     /// The digest covering the prefix a resumed transfer starts after. A transfer from zero
@@ -1375,6 +1401,7 @@ impl Desktop {
             | Pending::BeginEntry { .. }
             | Pending::AdvanceWatermark(_)
             | Pending::MarkVerified { .. }
+            | Pending::ForgetRow { .. }
             | Pending::DropMismatched { .. }) => {
                 vec![warn(format!("{other:?} was answered by storage"))]
             }
@@ -1458,6 +1485,7 @@ impl Desktop {
             | Pending::BeginEntry { .. }
             | Pending::AdvanceWatermark(_)
             | Pending::MarkVerified { .. }
+            | Pending::ForgetRow { .. }
             | Pending::DropMismatched { .. }) => {
                 vec![error_log(format!("{other:?} failed in storage: {error}"))]
             }
@@ -1550,6 +1578,12 @@ impl Desktop {
                 ]
             }
             Pending::AdvanceWatermark(sync) => self.watermark_advanced(sync),
+            Pending::ForgetRow { device, path } => vec![
+                info(format!("{path} on {device} will be sent again")),
+                Effect::NotifyUi {
+                    update: UiUpdate::Forgotten { device, path },
+                },
+            ],
             Pending::MarkVerified { device, file } => self.upload_verified(&device, file),
             Pending::BeginEntry { .. } => Vec::new(),
             other @ (Pending::CreateFile { .. }
@@ -1594,6 +1628,7 @@ impl Desktop {
             | Pending::NominationStat { .. }
             | Pending::TruncatePartial { .. }
             | Pending::RebuildDigest { .. }
+            | Pending::ForgetRow { .. }
             | Pending::FreeSpace { .. }
             | Pending::SeedFileIds
             | Pending::ListStaging { .. }

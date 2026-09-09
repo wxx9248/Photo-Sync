@@ -1869,3 +1869,38 @@ fn two_phones_that_staged_one_photograph_before_either_committed_store_it_once()
     assert_eq!(rows[0].vault_name, rows[1].vault_name);
     assert_eq!(sim.store.content().len(), 1);
 }
+
+#[test]
+fn a_stranded_photograph_is_sent_again_once_its_row_is_dropped() {
+    covers!("R-INDEX-004");
+    let mut sim = fresh();
+    // A row that matches what the phone holds. §7.5 calls this the stranded case: the diff
+    // keeps calling the file imported and the deletion gate keeps refusing to free it, so
+    // the photograph is never backed up and never let go of either.
+    sim.store
+        .remember_import(indexed_row(PHOTO.len() as u64, MTIME));
+
+    offer_one_photo(&mut sim);
+    let (to_send, summary) = diff_of(&sim.take_log());
+    assert!(to_send.is_empty());
+    assert_eq!(summary.already_imported, 1);
+
+    // Somebody asks for it to be taken again.
+    sim.deliver(Event::ForceReimportRequested {
+        device: phone(),
+        path: photo_path(),
+    });
+    assert!(
+        sim.store.device_files().is_empty(),
+        "the stale row is still there"
+    );
+    // The content row stays: the vault copy it names has not gone anywhere.
+    assert_eq!(sim.store.content().len(), 1);
+
+    // The next diff asks for the photograph.
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+    offer_one_photo(&mut sim);
+    let (to_send, summary) = diff_of(&sim.take_log());
+    assert_eq!(to_send.len(), 1, "the photograph was still not asked for");
+    assert_eq!(summary.already_imported, 0);
+}
