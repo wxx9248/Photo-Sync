@@ -25,7 +25,7 @@ const DEVICE: &str = "phone-a";
 
 /// Which desktop a scenario is checked against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Against {
+pub(crate) enum Against {
     /// The simulator: milliseconds, and the only place a crash can be arranged.
     Simulation,
 
@@ -36,7 +36,7 @@ pub enum Against {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Scenario {
+pub(crate) struct Scenario {
     pub id: String,
     pub description: String,
 
@@ -61,14 +61,14 @@ pub struct Scenario {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Phone_ {
+pub(crate) struct Phone_ {
     #[serde(default)]
     pub library: Vec<LibraryEntry>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LibraryEntry {
+pub(crate) struct LibraryEntry {
     pub path: String,
     pub size: u64,
     pub mtime: i64,
@@ -84,7 +84,7 @@ pub struct LibraryEntry {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Desktop_ {
+pub(crate) struct Desktop_ {
     #[serde(default)]
     pub index: Index,
 
@@ -98,14 +98,14 @@ pub struct Desktop_ {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Index {
+pub(crate) struct Index {
     #[serde(default)]
     pub device_file: Vec<IndexRow>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct IndexRow {
+pub(crate) struct IndexRow {
     pub device_path: String,
     pub size: u64,
     pub mtime: i64,
@@ -115,7 +115,7 @@ pub struct IndexRow {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Vault {
+pub(crate) struct Vault {
     /// Vault names the desktop still holds. A name the index records but this list omits is a
     /// photo the user curated away.
     #[serde(default)]
@@ -124,7 +124,7 @@ pub struct Vault {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
-pub enum ScenarioEvent {
+pub(crate) enum ScenarioEvent {
     /// The phone runs one whole session, from the handshake to the summary.
     RunSession,
 
@@ -139,7 +139,7 @@ pub enum ScenarioEvent {
 /// order, so an unexpected extra is a failure as much as a missing one.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Expect {
+pub(crate) struct Expect {
     #[serde(default)]
     pub uploaded: Vec<String>,
 
@@ -180,7 +180,7 @@ enum Trouble {
     Failed(String),
 }
 
-pub struct Outcome {
+pub(crate) struct Outcome {
     pub id: String,
     pub description: String,
 
@@ -196,18 +196,18 @@ pub struct Outcome {
 
 impl Outcome {
     #[must_use]
-    pub fn passed(&self) -> bool {
+    pub(crate) fn passed(&self) -> bool {
         self.failures.is_empty()
     }
 
     #[must_use]
-    pub fn was_checked(&self) -> bool {
+    pub(crate) fn was_checked(&self) -> bool {
         self.skipped.is_none()
     }
 }
 
 /// Runs every scenario in the directory, in name order.
-pub fn run_all(directory: &Path, against: Against) -> Result<Vec<Outcome>, String> {
+pub(crate) fn run_all(directory: &Path, against: Against) -> Result<Vec<Outcome>, String> {
     let mut outcomes = Vec::new();
     for file in files(directory)? {
         outcomes.push(check(&load(&file)?, against));
@@ -216,7 +216,7 @@ pub fn run_all(directory: &Path, against: Against) -> Result<Vec<Outcome>, Strin
 }
 
 /// Runs the one scenario with this identifier.
-pub fn run_one(directory: &Path, id: &str, against: Against) -> Result<Outcome, String> {
+pub(crate) fn run_one(directory: &Path, id: &str, against: Against) -> Result<Outcome, String> {
     for file in files(directory)? {
         let scenario = load(&file)?;
         if scenario.id == id {
@@ -313,7 +313,7 @@ fn outcome_of(scenario: &Scenario, failures: Vec<String>) -> Outcome {
 
 /// Prints a failure the way `docs/VERIFICATION.md` asks: what was being checked, what the
 /// requirements were, and what differed.
-pub fn print_failure(outcome: &Outcome) {
+pub(crate) fn print_failure(outcome: &Outcome) {
     println!("{} failed — {}", outcome.id, outcome.description);
     if !outcome.covers.is_empty() {
         println!("  in doubt: {}", outcome.covers.join(", "));

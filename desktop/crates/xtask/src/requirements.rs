@@ -5,13 +5,13 @@ use std::path::Path;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct Registry {
+pub(crate) struct Registry {
     #[serde(default, rename = "requirement")]
     pub requirements: Vec<Requirement>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Requirement {
+pub(crate) struct Requirement {
     pub id: String,
     pub section: String,
     pub area: String,
@@ -24,7 +24,7 @@ pub struct Requirement {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum Status {
+pub(crate) enum Status {
     /// Verification is expected now. An active requirement without a passing test fails the
     /// full tier.
     Active,
@@ -35,11 +35,11 @@ pub enum Status {
 
 impl Registry {
     /// Reads a registry from text, for comparing one version against another.
-    pub fn read(text: &str) -> Result<Self, String> {
+    pub(crate) fn read(text: &str) -> Result<Self, String> {
         toml::from_str(text).map_err(|error| format!("the registry could not be read: {error}"))
     }
 
-    pub fn load(path: &Path) -> Result<Self, String> {
+    pub(crate) fn load(path: &Path) -> Result<Self, String> {
         if !path.is_file() {
             return Ok(Registry {
                 requirements: Vec::new(),
@@ -52,7 +52,7 @@ impl Registry {
         toml::from_str(&text).map_err(|error| format!("cannot parse {}: {error}", path.display()))
     }
 
-    pub fn active(&self) -> impl Iterator<Item = &Requirement> {
+    pub(crate) fn active(&self) -> impl Iterator<Item = &Requirement> {
         self.requirements
             .iter()
             .filter(|item| item.status == Status::Active)

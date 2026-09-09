@@ -10,14 +10,14 @@ use std::path::Path;
 use crate::requirements::{Registry, Status};
 use crate::workspace;
 
-pub struct Matrix {
+pub(crate) struct Matrix {
     pub declarations: BTreeMap<String, Vec<String>>,
     pub active: Vec<ActiveRequirement>,
     pub deferred: usize,
 }
 
 /// The part of a requirement the matrix needs in order to explain a gap.
-pub struct ActiveRequirement {
+pub(crate) struct ActiveRequirement {
     pub id: String,
     pub area: String,
     pub section: String,
@@ -26,14 +26,14 @@ pub struct ActiveRequirement {
 
 impl Matrix {
     /// Active requirements that no test claims. These fail the full tier.
-    pub fn unclaimed(&self) -> Vec<&ActiveRequirement> {
+    pub(crate) fn unclaimed(&self) -> Vec<&ActiveRequirement> {
         self.active
             .iter()
             .filter(|requirement| !self.declarations.contains_key(&requirement.id))
             .collect()
     }
 
-    pub fn areas(&self) -> BTreeMap<&str, usize> {
+    pub(crate) fn areas(&self) -> BTreeMap<&str, usize> {
         let mut counts = BTreeMap::new();
         for requirement in &self.active {
             *counts.entry(requirement.area.as_str()).or_default() += 1;
@@ -42,7 +42,7 @@ impl Matrix {
     }
 }
 
-pub fn build(root: &Path) -> Result<Matrix, String> {
+pub(crate) fn build(root: &Path) -> Result<Matrix, String> {
     let registry = Registry::load(&workspace::requirements_file(root))?;
 
     let mut declarations = BTreeMap::new();
@@ -69,7 +69,7 @@ pub fn build(root: &Path) -> Result<Matrix, String> {
     })
 }
 
-pub fn print_matrix(root: &Path) -> Result<bool, String> {
+pub(crate) fn print_matrix(root: &Path) -> Result<bool, String> {
     let matrix = build(root)?;
     let unclaimed = matrix.unclaimed();
 

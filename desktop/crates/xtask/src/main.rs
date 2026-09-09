@@ -3,6 +3,10 @@
 //! One entry point for every tier, so a person, a hook, and a build server all invoke the same
 //! checks. See `docs/VERIFICATION.md`.
 
+// Nothing can import a binary, so `pub` here would widen an item to nobody while reading as a
+// commitment to somebody. Rule R10, left to the compiler rather than to review.
+#![warn(unreachable_pub)]
+
 mod campaign;
 mod checks;
 mod cli;

@@ -1,7 +1,7 @@
 //! Argument parsing. Kept by hand because the surface is small and stable.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Command {
+pub(crate) enum Command {
     Verify(Tier),
     SpecCheck,
     Matrix,
@@ -14,14 +14,14 @@ pub enum Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tier {
+pub(crate) enum Tier {
     Quick,
     Full,
     Nightly,
 }
 
 impl Tier {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Tier::Quick => "quick",
             Tier::Full => "full",
@@ -30,7 +30,7 @@ impl Tier {
     }
 }
 
-pub fn parse(arguments: &[String]) -> Result<Command, String> {
+pub(crate) fn parse(arguments: &[String]) -> Result<Command, String> {
     let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
 
     match words.as_slice() {
@@ -67,7 +67,7 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
     }
 }
 
-pub fn usage() -> String {
+pub(crate) fn usage() -> String {
     [
         "usage: ./verify <tier|command>",
         "",

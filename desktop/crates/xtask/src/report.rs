@@ -6,14 +6,14 @@ use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Status {
+pub(crate) enum Status {
     Passed,
     Failed,
     Skipped,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct CheckResult {
+pub(crate) struct CheckResult {
     pub name: String,
     pub status: Status,
 
@@ -22,7 +22,7 @@ pub struct CheckResult {
 }
 
 impl CheckResult {
-    pub fn from_outcome(name: &str, passed: bool, failure_detail: &str) -> Self {
+    pub(crate) fn from_outcome(name: &str, passed: bool, failure_detail: &str) -> Self {
         Self {
             name: name.to_string(),
             status: if passed {
@@ -38,7 +38,7 @@ impl CheckResult {
         }
     }
 
-    pub fn skipped(name: &str, reason: &str) -> Self {
+    pub(crate) fn skipped(name: &str, reason: &str) -> Self {
         Self {
             name: name.to_string(),
             status: Status::Skipped,
@@ -49,7 +49,7 @@ impl CheckResult {
 
 /// How much of the specification is being verified, and what is not.
 #[derive(Clone, Debug, Default, Serialize)]
-pub struct Requirements {
+pub(crate) struct Requirements {
     pub active: usize,
 
     /// Active requirements a passing test claims. The tier is only green when every test
@@ -61,7 +61,7 @@ pub struct Requirements {
 
 /// One thing that went wrong, with everything needed to act on it.
 #[derive(Clone, Debug, Serialize)]
-pub struct Failure {
+pub(crate) struct Failure {
     /// The scenario or test that failed.
     pub test: String,
 
@@ -80,13 +80,13 @@ pub struct Failure {
 
 /// What a run of made-up sessions found.
 #[derive(Clone, Debug, Serialize)]
-pub struct Campaign {
+pub(crate) struct Campaign {
     pub seeds: usize,
     pub failed_seeds: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct Report {
+pub(crate) struct Report {
     pub tier: String,
     pub started: u64,
     pub duration_s: u64,
@@ -101,7 +101,7 @@ pub struct Report {
 }
 
 impl Report {
-    pub fn started(tier: &str) -> Self {
+    pub(crate) fn started(tier: &str) -> Self {
         Self {
             tier: tier.to_string(),
             started: seconds_since_epoch(),
@@ -114,30 +114,30 @@ impl Report {
         }
     }
 
-    pub fn ran(&mut self, campaign: Campaign) {
+    pub(crate) fn ran(&mut self, campaign: Campaign) {
         self.campaign = Some(campaign);
     }
 
-    pub fn record(&mut self, requirements: Requirements) {
+    pub(crate) fn record(&mut self, requirements: Requirements) {
         self.requirements = requirements;
     }
 
-    pub fn blame(&mut self, failures: Vec<Failure>) {
+    pub(crate) fn blame(&mut self, failures: Vec<Failure>) {
         self.failures.extend(failures);
     }
 
-    pub fn add(&mut self, check: CheckResult) {
+    pub(crate) fn add(&mut self, check: CheckResult) {
         if check.status == Status::Failed {
             self.result = Status::Failed;
         }
         self.checks.push(check);
     }
 
-    pub fn passed(&self) -> bool {
+    pub(crate) fn passed(&self) -> bool {
         self.result != Status::Failed
     }
 
-    pub fn finish(&mut self, directory: &Path) -> Result<(), String> {
+    pub(crate) fn finish(&mut self, directory: &Path) -> Result<(), String> {
         self.duration_s = seconds_since_epoch().saturating_sub(self.started);
 
         std::fs::create_dir_all(directory)

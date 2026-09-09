@@ -74,7 +74,7 @@ const CONTROLS: [Control; 10] = [
 ///
 /// # Errors
 /// When the tests cannot be run at all.
-pub fn run(root: &Path) -> Result<bool, String> {
+pub(crate) fn run(root: &Path) -> Result<bool, String> {
     let desktop = root.join("desktop");
     let mut all_caught = true;
 

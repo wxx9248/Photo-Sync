@@ -20,7 +20,7 @@ const REQUIRED: f64 = 0.85;
 /// Packages whose tests exercise the core.
 const EXERCISED_BY: [&str; 2] = ["photo-sync-core", "photo-sync-sim"];
 
-pub fn run(root: &Path, module: Option<&str>) -> Result<bool, String> {
+pub(crate) fn run(root: &Path, module: Option<&str>) -> Result<bool, String> {
     if !tools::cargo_subcommand_available("mutants") {
         println!("mutants: cargo-mutants is not installed, run `cargo install cargo-mutants`");
         return Ok(true);

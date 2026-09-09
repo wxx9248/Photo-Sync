@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub fn repository_root() -> Result<PathBuf, String> {
+pub(crate) fn repository_root() -> Result<PathBuf, String> {
     let start = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     for candidate in start.ancestors() {
@@ -14,22 +14,22 @@ pub fn repository_root() -> Result<PathBuf, String> {
     Err("could not find the repository root: docs/SPEC.md is missing".to_string())
 }
 
-pub fn requirements_file(root: &Path) -> PathBuf {
+pub(crate) fn requirements_file(root: &Path) -> PathBuf {
     root.join("verification/requirements.toml")
 }
 
-pub fn spec_file(root: &Path) -> PathBuf {
+pub(crate) fn spec_file(root: &Path) -> PathBuf {
     root.join("docs/SPEC.md")
 }
 
-pub fn reports_directory(root: &Path) -> PathBuf {
+pub(crate) fn reports_directory(root: &Path) -> PathBuf {
     root.join("verification/reports")
 }
 
-pub fn corpus_directory(root: &Path) -> PathBuf {
+pub(crate) fn corpus_directory(root: &Path) -> PathBuf {
     root.join("verification/corpus")
 }
 
-pub fn scenarios_directory(root: &Path) -> PathBuf {
+pub(crate) fn scenarios_directory(root: &Path) -> PathBuf {
     root.join("verification/scenarios")
 }

@@ -9,7 +9,7 @@ use crate::tools;
 
 /// What a missing tool costs. Ordered so the earliest tier appears first in the summary.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Need {
+pub(crate) enum Need {
     Quick,
     Full,
     Nightly,
@@ -44,7 +44,7 @@ impl Check {
     }
 }
 
-pub fn run(root: &Path) -> Result<bool, String> {
+pub(crate) fn run(root: &Path) -> Result<bool, String> {
     let checks = collect(root);
     report(&checks);
 

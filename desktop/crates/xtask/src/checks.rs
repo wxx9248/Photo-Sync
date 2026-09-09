@@ -40,12 +40,12 @@ const BANNER: &str = "==========================================================
 
 /// One path the range changed, and whether the change created it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Change {
+pub(crate) struct Change {
     pub path: String,
     pub added: bool,
 }
 
-pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
+pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     let desktop = root.join("desktop");
     let mut report = Report::started(tier.name());
 
@@ -340,7 +340,7 @@ fn requirement_matrix(root: &Path) -> Result<CheckResult, String> {
     ))
 }
 
-pub fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
+pub(crate) fn protected_artifacts(root: &Path, against: &str) -> Result<bool, String> {
     let range = format!("{against}...HEAD");
     let output = std::process::Command::new("git")
         .args(["diff", "--name-status", &range])

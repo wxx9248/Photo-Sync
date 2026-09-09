@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::Command;
 
-pub fn cargo_subcommand_available(subcommand: &str) -> bool {
+pub(crate) fn cargo_subcommand_available(subcommand: &str) -> bool {
     Command::new("cargo")
         .args([subcommand, "--version"])
         .stdout(std::process::Stdio::null())
@@ -16,7 +16,7 @@ pub fn cargo_subcommand_available(subcommand: &str) -> bool {
 }
 
 /// Runs a program only to learn whether it is installed and which version answers.
-pub fn version(program: &str, arguments: &[&str]) -> Option<String> {
+pub(crate) fn version(program: &str, arguments: &[&str]) -> Option<String> {
     let output = Command::new(program).args(arguments).output().ok()?;
 
     if !output.status.success() {
@@ -27,7 +27,7 @@ pub fn version(program: &str, arguments: &[&str]) -> Option<String> {
 }
 
 /// Captures a command's output, treating an empty result as nothing found.
-pub fn capture(program: &str, arguments: &[&str], directory: &Path) -> Option<String> {
+pub(crate) fn capture(program: &str, arguments: &[&str], directory: &Path) -> Option<String> {
     let output = Command::new(program)
         .args(arguments)
         .current_dir(directory)
@@ -38,7 +38,7 @@ pub fn capture(program: &str, arguments: &[&str], directory: &Path) -> Option<St
     if text.is_empty() { None } else { Some(text) }
 }
 
-pub fn run(program: &str, arguments: &[&str], directory: &Path) -> Result<bool, String> {
+pub(crate) fn run(program: &str, arguments: &[&str], directory: &Path) -> Result<bool, String> {
     let status = Command::new(program)
         .args(arguments)
         .current_dir(directory)

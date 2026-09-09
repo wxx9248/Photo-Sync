@@ -9,21 +9,21 @@ use std::path::{Path, PathBuf};
 use photo_sync_sim::campaign;
 
 /// What one campaign run found.
-pub struct Outcome {
+pub(crate) struct Outcome {
     pub seeds: usize,
     pub failures: Vec<campaign::Failure>,
 }
 
 impl Outcome {
     #[must_use]
-    pub fn passed(&self) -> bool {
+    pub(crate) fn passed(&self) -> bool {
         self.failures.is_empty()
     }
 }
 
 /// Runs a stretch of seeds, starting from zero.
 #[must_use]
-pub fn run(seeds: usize) -> Outcome {
+pub(crate) fn run(seeds: usize) -> Outcome {
     let failures = (0..seeds as u64)
         .filter_map(|seed| campaign::run(seed).err())
         .collect();
@@ -34,7 +34,7 @@ pub fn run(seeds: usize) -> Outcome {
 ///
 /// # Errors
 /// When the corpus cannot be read.
-pub fn replay_corpus(directory: &Path) -> Result<Outcome, String> {
+pub(crate) fn replay_corpus(directory: &Path) -> Result<Outcome, String> {
     let seeds = corpus(directory)?;
     let failures = seeds
         .iter()
@@ -50,7 +50,7 @@ pub fn replay_corpus(directory: &Path) -> Result<Outcome, String> {
 ///
 /// # Errors
 /// When the token is not a seed.
-pub fn replay_one(token: &str) -> Result<Outcome, String> {
+pub(crate) fn replay_one(token: &str) -> Result<Outcome, String> {
     let seed = parse(token).ok_or_else(|| format!("{token} is not a seed"))?;
     let failures: Vec<campaign::Failure> = campaign::run(seed).err().into_iter().collect();
     if failures.is_empty() {
@@ -85,7 +85,7 @@ fn parse(token: &str) -> Option<u64> {
     u64::from_str_radix(token.strip_prefix("0x").unwrap_or(token), 16).ok()
 }
 
-pub fn print_failures(outcome: &Outcome) {
+pub(crate) fn print_failures(outcome: &Outcome) {
     for failure in &outcome.failures {
         println!("  {failure}");
         println!("    reproduce with: ./verify replay {:#018x}", failure.seed);

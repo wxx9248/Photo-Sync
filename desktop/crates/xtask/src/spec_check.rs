@@ -9,18 +9,18 @@ use std::path::Path;
 use crate::requirements::Registry;
 use crate::workspace;
 
-pub struct Outcome {
+pub(crate) struct Outcome {
     pub checked: usize,
     pub missing: Vec<String>,
 }
 
 impl Outcome {
-    pub fn passed(&self) -> bool {
+    pub(crate) fn passed(&self) -> bool {
         self.missing.is_empty()
     }
 }
 
-pub fn run(root: &Path) -> Result<Outcome, String> {
+pub(crate) fn run(root: &Path) -> Result<Outcome, String> {
     let registry = Registry::load(&workspace::requirements_file(root))?;
     let spec = std::fs::read_to_string(workspace::spec_file(root))
         .map_err(|error| format!("cannot read the specification: {error}"))?;
