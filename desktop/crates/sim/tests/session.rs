@@ -1792,3 +1792,80 @@ fn a_photograph_the_index_knows_at_another_time_is_asked_for_again() {
     assert_eq!(to_send.len(), 1);
     assert_eq!(summary.already_imported, 0);
 }
+
+#[test]
+fn two_phones_that_staged_one_photograph_before_either_committed_store_it_once() {
+    covers!("R-COMMIT-003", "R-COMMIT-005");
+    let other = DeviceId::new("phone-b");
+    let mut sim = fresh();
+    sim.deliver(Event::Started {
+        now: Timestamp(MTIME),
+    });
+
+    // Both phones get the same photograph across, and neither has committed yet. §7.3 calls
+    // this out by name: the dedup point under the commit lock is what closes the race.
+    for device in [phone(), other.clone()] {
+        sim.deliver(Event::PeerConnected {
+            device: device.clone(),
+            name: "A phone".to_string(),
+        });
+        sim.deliver(Event::CatalogSubmitted {
+            device: device.clone(),
+            entries: vec![photo_entry()],
+            total_bytes: PHOTO.len() as u64,
+        });
+        sim.deliver(Event::DiffRequested {
+            device: device.clone(),
+        });
+        let (to_send, _) = diff_of(&sim.take_log());
+        assert_eq!(
+            to_send.len(),
+            1,
+            "{device} was not asked for the photograph"
+        );
+        let file = to_send[0].file;
+        sim.deliver(Event::UploadOpened {
+            device: device.clone(),
+            file,
+            path: photo_path(),
+            size: PHOTO.len() as u64,
+            mtime: Timestamp(MTIME),
+            offset: 0,
+        });
+        sim.deliver(Event::ChunkArrived {
+            device: device.clone(),
+            file,
+            offset: 0,
+            data: PHOTO.to_vec(),
+        });
+        sim.deliver(Event::UploadClosed {
+            device: device.clone(),
+            file,
+            digest: digest_of(PHOTO),
+        });
+        assert_eq!(
+            upload_outcome(&sim.take_log()),
+            UploadOutcome::Verified {
+                durable_bytes: PHOTO.len() as u64
+            },
+            "{device} did not get its photograph across"
+        );
+    }
+
+    // Commits are serialized, and the first one's index rows are in before the second one
+    // builds its map, so the second sees the content already known and writes no second copy.
+    sim.deliver(Event::FinishRequested { device: phone() });
+    sim.deliver(Event::FinishRequested {
+        device: other.clone(),
+    });
+
+    assert_eq!(
+        sim.storage.vault().len(),
+        1,
+        "the same photograph was stored twice"
+    );
+    let rows = sim.store.device_files();
+    assert_eq!(rows.len(), 2, "both phones should have a row of their own");
+    assert_eq!(rows[0].vault_name, rows[1].vault_name);
+    assert_eq!(sim.store.content().len(), 1);
+}

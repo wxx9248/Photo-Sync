@@ -209,6 +209,17 @@ impl Desktop {
             return vec![warn(format!("{step:?} completed for no commit"))];
         }
         match answer {
+            // SABOTAGE: a commit that carries on past a rename it could not make. The entries
+            // behind the failure earn done-marks for renames that never happened, so recovery
+            // is told the photographs are in the vault when they are not.
+            #[cfg(feature = "sabotage-halt")]
+            Answer::Failed(reason) => {
+                let mut effects = vec![warn(format!("{reason}, carrying on"))];
+                effects.extend(self.advance(step));
+                effects
+            }
+
+            #[cfg(not(feature = "sabotage-halt"))]
             Answer::Failed(reason) => self.halt(&step, &reason),
             Answer::Done => self.advance(step),
             Answer::Store(response) => self.take_answer(step, response),
@@ -393,15 +404,28 @@ impl Desktop {
                 ))
             })
             .collect();
-        let op = self.begin(Pending::Commit(Step::SealPlan));
-        effects.push(Effect::Store {
-            op,
-            request: StoreRequest::SealCommitPlan {
-                device,
-                plan: entries,
-            },
-        });
-        effects
+        // SABOTAGE: renaming before the map is sealed. A power loss then leaves files in
+        // the vault that no write-log describes, so recovery has nothing to replay and no
+        // way to know they are already there.
+        #[cfg(feature = "sabotage-seal")]
+        {
+            let _ = (device, entries);
+            effects.extend(self.execute_group());
+            return effects;
+        }
+
+        #[cfg(not(feature = "sabotage-seal"))]
+        {
+            let op = self.begin(Pending::Commit(Step::SealPlan));
+            effects.push(Effect::Store {
+                op,
+                request: StoreRequest::SealCommitPlan {
+                    device,
+                    plan: entries,
+                },
+            });
+            effects
+        }
     }
 
     fn advance(&mut self, step: Step) -> Vec<Effect> {
@@ -411,10 +435,32 @@ impl Desktop {
             Step::SyncVault => self.sync_staging(),
             Step::SyncStaging => self.mark_group_done(),
             Step::MarkDone => self.execute_group(),
+
+            // SABOTAGE: clearing staging before the index rows are durable. A power loss in
+            // between leaves photographs in the vault that nothing has a record of, and the
+            // manifest that could have rebuilt the rows is gone with it.
+            #[cfg(feature = "sabotage-rowsfirst")]
+            Step::InsertRows => self.finish(),
+            #[cfg(feature = "sabotage-rowsfirst")]
+            Step::ClearFiles => self.insert_rows(),
+
+            #[cfg(not(feature = "sabotage-rowsfirst"))]
             Step::InsertRows => self.clear(Step::ClearLog),
-            Step::ClearLog => self.clear(Step::ClearManifest),
-            Step::ClearManifest => self.clear(Step::ClearFiles),
+            #[cfg(not(feature = "sabotage-rowsfirst"))]
             Step::ClearFiles => self.finish(),
+
+            // SABOTAGE: clearing the manifest before the write-log. Recovery reads them the
+            // other way round, so a power loss in between leaves a sealed log whose entries
+            // have no manifest rows left to supply the index rows they stand for.
+            #[cfg(feature = "sabotage-clearorder")]
+            Step::ClearManifest => self.clear(Step::ClearLog),
+            #[cfg(feature = "sabotage-clearorder")]
+            Step::ClearLog => self.clear(Step::ClearFiles),
+
+            #[cfg(not(feature = "sabotage-clearorder"))]
+            Step::ClearLog => self.clear(Step::ClearManifest),
+            #[cfg(not(feature = "sabotage-clearorder"))]
+            Step::ClearManifest => self.clear(Step::ClearFiles),
             Step::ReadClock
             | Step::ListBatch
             | Step::StatStaged { .. }

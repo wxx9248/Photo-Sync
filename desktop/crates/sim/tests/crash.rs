@@ -852,3 +852,38 @@ fn a_commit_stopped_before_it_was_sealed_lands_at_the_next_one() {
     );
     assert_eq!(sim.store.device_files().len(), 1);
 }
+
+#[test]
+fn a_commit_that_cannot_rename_stops_and_is_finished_later() {
+    covers!("R-COMMIT-009");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+
+    // The vault will not take the file. §7.3 stops the commit where it stands rather than
+    // carrying on past it.
+    sim.faults.refuse_renames = true;
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    assert!(
+        sim.storage.vault().is_empty(),
+        "a rename that failed still put something in the vault"
+    );
+    assert!(
+        sim.store.device_files().is_empty(),
+        "a photograph that never moved was written down as imported"
+    );
+    assert!(
+        sim.store.sealed_plan(&phone()).is_some(),
+        "the sealed write-log that finishes this later was thrown away"
+    );
+
+    // The condition clears and recovery replays what was sealed.
+    sim.faults.refuse_renames = false;
+    sim.restart();
+    agreed(&sim);
+
+    assert_eq!(sim.storage.vault().len(), 1);
+    assert_eq!(sim.store.device_files().len(), 1);
+    assert!(sim.store.sealed_plan(&phone()).is_none());
+}

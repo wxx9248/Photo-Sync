@@ -20,6 +20,10 @@ sabotage-donemark = []
 sabotage-watermark = []
 sabotage-dedup = []
 sabotage-nomination = []
+sabotage-seal = []
+sabotage-rowsfirst = []
+sabotage-clearorder = []
+sabotage-halt = []
 
 [lints]
 workspace = true

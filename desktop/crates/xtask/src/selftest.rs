@@ -27,7 +27,7 @@ struct Control {
     breaks: &'static str,
 }
 
-const CONTROLS: [Control; 5] = [
+const CONTROLS: [Control; 9] = [
     Control {
         how: Arrange::Sabotage("sabotage-donemark"),
         breaks: "§7.3: a done-mark written before the directories are durable",
@@ -43,6 +43,22 @@ const CONTROLS: [Control; 5] = [
     Control {
         how: Arrange::Sabotage("sabotage-nomination"),
         breaks: "§8: nomination trusting the index without looking at the vault",
+    },
+    Control {
+        how: Arrange::Sabotage("sabotage-seal"),
+        breaks: "§7.3: a rename made before the write-log was sealed",
+    },
+    Control {
+        how: Arrange::Sabotage("sabotage-rowsfirst"),
+        breaks: "§7.3: staging cleared before the index rows were durable",
+    },
+    Control {
+        how: Arrange::Sabotage("sabotage-clearorder"),
+        breaks: "§7.3: the manifest cleared before the write-log",
+    },
+    Control {
+        how: Arrange::Sabotage("sabotage-halt"),
+        breaks: "§7.3: a commit carrying on past a rename it could not make",
     },
     Control {
         how: Arrange::Lie("PHOTO_SYNC_LYING_FSYNC"),
