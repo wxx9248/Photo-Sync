@@ -27,6 +27,36 @@ use crate::pinning::Paired;
 /// bounded so neither end has to hold a whole library in memory.
 const ENTRIES_PER_MESSAGE: usize = 1000;
 
+/// How many entries one phone can make this desktop hold. `SPEC.md` §6.1.
+const CATALOG_CEILING: usize = 1_000_000;
+
+/// A running count of something a phone streams, against the ceiling `SPEC.md` §6.1 sets.
+///
+/// Pairing says which phone is calling and nothing about whether it will stop sending, so a
+/// stream the desktop gathers up needs an end it decides itself. Conventions §12.2.
+struct Ceiling {
+    held: usize,
+    most: usize,
+}
+
+impl Ceiling {
+    fn of(most: usize) -> Self {
+        Self { held: 0, most }
+    }
+
+    /// Counts what just arrived, refusing the call when it takes the stream over the ceiling.
+    fn take(&mut self, arrived: usize) -> Result<(), Status> {
+        self.held = self.held.saturating_add(arrived);
+        if self.held > self.most {
+            return Err(Status::resource_exhausted(format!(
+                "this desktop reads at most {} entries from one phone",
+                self.most
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// The key that authenticated a connection, carried alongside it.
 #[derive(Clone, Debug, Default)]
 pub struct PeerKey(pub Option<Vec<u8>>);
@@ -117,8 +147,10 @@ impl wire::photo_sync_server::PhotoSync for SyncService {
 
         let mut entries = Vec::new();
         let mut total_bytes = 0;
+        let mut ceiling = Ceiling::of(CATALOG_CEILING);
         while let Some(chunk) = chunks.next().await {
             let chunk = chunk?;
+            ceiling.take(chunk.entries.len())?;
             entries.extend(chunk.entries.into_iter().map(|entry| CatalogEntry {
                 path: DevicePath::new(entry.path),
                 size: entry.size,
@@ -291,8 +323,13 @@ impl wire::photo_sync_server::PhotoSync for SyncService {
         let mut reports = request.into_inner();
 
         let mut outcomes = Vec::new();
+        // A phone cannot report on more photographs than a catalog can name, so the same
+        // ceiling holds here. `SPEC.md` §6.1.
+        let mut ceiling = Ceiling::of(CATALOG_CEILING);
         while let Some(report) = reports.next().await {
-            for outcome in report?.outcomes {
+            let report = report?;
+            ceiling.take(report.outcomes.len())?;
+            for outcome in report.outcomes {
                 outcomes.push(DeletionOutcome {
                     path: DevicePath::new(outcome.path),
                     result: deletion_result(outcome.result),
@@ -558,6 +595,34 @@ impl wire::pairing_server::Pairing for PairingService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use photo_sync_core::covers;
+
+    #[test]
+    fn a_phone_may_send_entries_right_up_to_the_ceiling() {
+        covers!("R-CATALOG-006");
+        let mut ceiling = Ceiling::of(1000);
+        assert!(ceiling.take(999).is_ok());
+        assert!(ceiling.take(1).is_ok());
+    }
+
+    #[test]
+    fn the_entry_after_the_ceiling_ends_the_session() {
+        covers!("R-CATALOG-006");
+        let mut ceiling = Ceiling::of(1000);
+        assert!(ceiling.take(1000).is_ok());
+        let refused = ceiling
+            .take(1)
+            .expect_err("the ceiling let one more through");
+        assert_eq!(refused.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[test]
+    fn a_count_too_large_to_add_up_is_refused_rather_than_wrapped() {
+        covers!("R-CATALOG-006");
+        let mut ceiling = Ceiling::of(1000);
+        assert!(ceiling.take(usize::MAX).is_err());
+        assert!(ceiling.take(usize::MAX).is_err());
+    }
 
     /// Chunking carries one bit of real meaning: which message is the last one. The reader on
     /// the other end waits for it, so getting it wrong is a session that never finishes.
