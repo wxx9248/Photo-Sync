@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as each milestone goes. M5 is closed.
+Written at the close of milestone M1, and added to as each milestone goes. M6 is closed.
 
 ## 1. Run these once
 
@@ -289,3 +289,36 @@ directly instead.
 `R-DELETE-005` (the phone shows one prompt) and `R-DELETE-009` (`MediaStore.createDeleteRequest`,
 silent under `MANAGE_MEDIA`) are the phone's own doing. Nothing on the desktop can observe
 either, so they stay deferred rather than being claimed here.
+
+## 11. What M6 changed
+
+M6 closed. `R-DISCOVER-001`, `R-PAIR-003`, `R-PAIR-004` and four of the five `R-SESSION-*` are
+active and verified; sixty requirements are active now, with none unverified.
+
+**The desktop can be found.** An mDNS responder advertises `_photosync._tcp` with the protocol
+version and the display name in its TXT record, which is what lets a phone tell an incompatible
+desktop from an absent one before opening a connection. Given no addresses it tracks the
+machine's own, since a laptop that moves between wifi and a cable is the ordinary case. The test
+browses from a second, independent daemon standing in for `NsdManager`, so what passes is a real
+multicast round trip rather than a responder hearing itself.
+
+**A campaign runs two phones.** One phone left two of §7.3's claims to hand-written tests:
+that commits serialize across devices, and that one phone's content dedups against another's
+through the index. That also made the rule M4 could not sabotage reachable — index rows going in
+after the commit lock is released, so the next commit builds against an index that has never
+heard of the batch and stores a second copy. Every ordering rule in §7.3 now has a control, ten
+in all.
+
+**Two things are checked by lying.** A phone that claims another device's identity in its
+handshake is still known by the key it holds, so nothing in a message body decides whose session
+this is. And a phone whose remembered desktop key does not match the one answering never opens
+the connection at all — the refusal happens in TLS, before a byte of the protocol.
+
+### Worth a person's attention
+
+* **Discovery has never met a real phone.** The responder is checked against another Rust daemon
+  on this machine. Multicast across a home router, and `NsdManager`'s own view of these records,
+  are the two things only a real network can answer. `docs/DEVELOPMENT.md` already says the
+  machine needs bridging for that.
+* Nothing calls the responder yet. It is a module with tests and no caller until M7 assembles
+  the application.

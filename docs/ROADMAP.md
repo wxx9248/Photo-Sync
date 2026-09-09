@@ -15,7 +15,7 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 through M5 are complete. The work in progress is **M6**.
+M0 through M6 are complete. The work in progress is **M7**.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -30,8 +30,8 @@ entry identity the desktop diffs against, is active and verified here.
 M4 closed with one ordering rule of `SPEC.md` §7.3 tested but not sabotaged. Index rows go in
 before the commit lock is released, which is what lets the next commit's map see them; two
 phones that staged one photograph before either committed prove the behaviour. Inverting the
-rule needs two commits actually running against one another, so its negative control waits for
-the multi-device campaign in M6.
+rule needs two commits actually running against one another. M6 closed that: a campaign runs
+two phones now, and the control exists.
 
 M5 closed with two of the deletion requirements still deferred. `R-DELETE-005` is the single
 prompt the phone shows and `R-DELETE-009` is `MediaStore.createDeleteRequest`; both are things
@@ -39,6 +39,14 @@ the phone does, and nothing on this end can see either. They close with M8. The 
 of both — the split between what this session committed and what an earlier one did, which the
 prompt is built from, and the candidate list the delete request works through — is active and
 verified.
+
+M6 closed with four requirements still deferred, all of them things the phone does and nothing
+here can see: `R-SESSION-001` (the Start tap), `R-SESSION-003` (the phone persists nothing about
+transfer progress), `R-PAIR-002` (the phone stores exactly one paired desktop), and
+`R-DELETE-005`/`R-DELETE-009` from M5. They close with M8.
+
+Discovery is built and tested against a real multicast round trip, but nothing calls it yet:
+`main.rs` is still a placeholder, and assembling the application is M7.
 
 ### M0 Foundation
 

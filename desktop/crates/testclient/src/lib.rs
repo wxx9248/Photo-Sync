@@ -42,6 +42,14 @@ struct Sending {
 
 /// A phone's end of a real connection.
 pub struct Connected {
+    /// What this phone will say it is, when that differs from the key it holds, and which
+    /// version it will claim to speak. Only a test has any use for these: a real phone has
+    /// no reason to misdescribe itself, and `SPEC.md` §6 says the desktop takes the device
+    /// from the pinned key and never from a message body — which is a claim worth being able
+    /// to test by lying.
+    pub claimed_device: Option<String>,
+    pub claimed_version: Option<u32>,
+
     runtime: Handle,
     client: PhotoSyncClient<Channel>,
     device: DeviceId,
@@ -81,6 +89,8 @@ impl Connected {
         });
 
         Ok(Self {
+            claimed_device: None,
+            claimed_version: None,
             runtime: runtime.clone(),
             client: PhotoSyncClient::new(channel.map_err(|error| error.to_string())?),
             device: device.clone(),
@@ -153,8 +163,13 @@ impl Connected {
 
     async fn handshake(&mut self, name: String) -> Vec<Effect> {
         let asked = wire::HandshakeRequest {
-            protocol_version: photo_sync_protocol::PROTOCOL_VERSION,
-            device_id: self.device.to_string(),
+            protocol_version: self
+                .claimed_version
+                .unwrap_or(photo_sync_protocol::PROTOCOL_VERSION),
+            device_id: self
+                .claimed_device
+                .clone()
+                .unwrap_or_else(|| self.device.to_string()),
             device_name: name,
         };
         match self.client.handshake(asked).await {

@@ -299,3 +299,114 @@ fn a_transfer_cut_short_carries_on_from_the_watermark_over_a_socket() {
     };
     assert_eq!(stored, whole, "the resumed file is not the photograph");
 }
+
+#[test]
+fn a_phone_that_misnames_itself_is_still_known_by_the_key_it_holds() {
+    covers!("R-SESSION-005");
+    let scratch = Scratch::new();
+    let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, b"one photograph".to_vec()),
+    );
+
+    let known = known(&scratch, &phone);
+
+    // A first, honest session. The photograph is imported and the phone keeps it, so the
+    // catalog of the second session is the same.
+    {
+        let mut connected = dial(&known, &phone);
+        let outcome = phone.run_session(&mut connected);
+        assert_eq!(outcome.uploaded.len(), 1);
+    }
+    let mut kept = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, b"one photograph".to_vec()),
+    );
+
+    // The same key, now claiming to be a phone the desktop has never met. If the desktop
+    // took the device from what it was told, this session would look like a stranger's and
+    // the photograph would be asked for all over again.
+    let mut connected = dial(&known, &kept);
+    connected.claimed_device = Some("phone-b".to_string());
+    let outcome = kept.run_session(&mut connected);
+
+    assert!(
+        outcome.uploaded.is_empty(),
+        "the desktop believed a device name it was handed"
+    );
+    assert_eq!(vault_files(&scratch).len(), 1, "a second copy was stored");
+}
+
+#[test]
+fn a_phone_speaking_another_version_is_turned_away() {
+    covers!("R-PAIR-004");
+    let scratch = Scratch::new();
+    let mut phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, b"one photograph".to_vec()),
+    );
+
+    let known = known(&scratch, &phone);
+    let mut connected = dial(&known, &phone);
+    // STACK.md §5.4: an unknown major version is refused in plain language rather than
+    // negotiated, and the version travels in the handshake as well as the TXT record.
+    connected.claimed_version = Some(photo_sync_protocol::PROTOCOL_VERSION + 1);
+
+    let outcome = phone.run_session(&mut connected);
+
+    assert!(
+        outcome.rejected.is_some(),
+        "a version nobody speaks was accepted"
+    );
+    assert!(outcome.uploaded.is_empty());
+    assert!(vault_files(&scratch).is_empty());
+    assert_eq!(
+        phone.files.len(),
+        1,
+        "the phone gave up a photograph anyway"
+    );
+}
+
+#[test]
+fn a_desktop_key_that_changed_is_never_trusted_silently() {
+    covers!("R-PAIR-003");
+    let scratch = Scratch::new();
+    let phone = Phone::new("phone-a", "Kitchen phone").holding(
+        "DCIM/Camera/IMG_0001.jpg",
+        PhoneFile::new(MTIME, b"one photograph".to_vec()),
+    );
+
+    let known = known(&scratch, &phone);
+
+    // First that the desktop is reachable at all, so what follows is about the key and not
+    // about the socket.
+    assert!(
+        Connected::dial(
+            known.desktop.runtime.handle(),
+            known.desktop.address,
+            &known.phone_identity,
+            known.desktop_identity.public_key(),
+            &phone.device,
+        )
+        .is_ok(),
+        "the desktop the phone remembers cannot be reached"
+    );
+
+    // Now the desktop answering is not the one the phone remembers: a reinstall, or somebody
+    // standing in the middle. §5.2 says this is never waved through, and the refusal comes
+    // before a single byte of the protocol — the connection itself does not open.
+    let stranger = scratch.identity("another-desktop");
+    let refused = Connected::dial(
+        known.desktop.runtime.handle(),
+        known.desktop.address,
+        &known.phone_identity,
+        stranger.public_key(),
+        &phone.device,
+    );
+
+    assert!(
+        refused.is_err(),
+        "a phone opened a connection to a desktop whose key it did not recognise"
+    );
+    assert!(vault_files(&scratch).is_empty());
+}

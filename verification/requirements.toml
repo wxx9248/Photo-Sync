@@ -452,7 +452,7 @@ quote = "**Tap 1 — Start**"
 id = "R-SESSION-002"
 section = "§3.4"
 area = "SESSION"
-status = "deferred"
+status = "active"
 quote = "the phone auto-sends the finish signal with no tap"
 
 [[requirement]]
@@ -466,28 +466,28 @@ quote = "The phone persists nothing about transfer progress (only the pairing cr
 id = "R-SESSION-004"
 section = "§6"
 area = "SESSION"
-status = "deferred"
+status = "active"
 quote = "A connection drop mid-session is rejoined by re-running the handshake and re-sending the *frozen* catalog"
 
 [[requirement]]
 id = "R-SESSION-005"
 section = "§6"
 area = "SESSION"
-status = "deferred"
+status = "active"
 quote = "There is no session token"
 
 [[requirement]]
 id = "R-SESSION-006"
 section = "§6"
 area = "SESSION"
-status = "deferred"
+status = "active"
 quote = "the phone never resumes from its own send counter"
 
 [[requirement]]
 id = "R-SESSION-007"
 section = "§4"
 area = "SESSION"
-status = "deferred"
+status = "active"
 quote = "A second live connection claiming an already-connected device ID supersedes the first."
 
 [[requirement]]
@@ -508,21 +508,21 @@ quote = "The phone stores exactly **one** paired desktop."
 id = "R-PAIR-003"
 section = "§5.2"
 area = "PAIR"
-status = "deferred"
+status = "active"
 quote = "A changed desktop key (e.g. reinstall) triggers a visible re-pair flow — never silent trust."
 
 [[requirement]]
 id = "R-PAIR-004"
 section = "§5.2"
 area = "PAIR"
-status = "deferred"
+status = "active"
 quote = "Handshake payload: protocol version, device ID, device name."
 
 [[requirement]]
 id = "R-DISCOVER-001"
 section = "§5.1"
 area = "DISCOVER"
-status = "deferred"
+status = "active"
 quote = "mDNS/DNS-SD, service type `_photosync._tcp`."
 
 [[requirement]]
