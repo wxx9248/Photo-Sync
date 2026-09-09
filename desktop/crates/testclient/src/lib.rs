@@ -31,6 +31,12 @@ struct Sending {
     file: FileId,
     path: DevicePath,
     offset: u64,
+
+    /// What the phone says the file is at the moment it sends it, which the desktop checks
+    /// against the frozen catalog. `SPEC.md` §6.4.
+    size: u64,
+    mtime: i64,
+
     bytes: Vec<u8>,
 }
 
@@ -112,12 +118,19 @@ impl Connected {
             } => self.submit_catalog(entries, total_bytes).await,
             Event::DiffRequested { .. } => self.get_diff().await,
             Event::UploadOpened {
-                file, path, offset, ..
+                file,
+                path,
+                size,
+                mtime,
+                offset,
+                ..
             } => {
                 self.sending = Some(Sending {
                     file,
                     path,
                     offset,
+                    size,
+                    mtime: mtime.0,
                     bytes: Vec::new(),
                 });
                 Vec::new()
@@ -224,8 +237,8 @@ impl Connected {
             kind: Some(wire::file_chunk::Kind::Header(wire::FileHeader {
                 file_id: sending.file.0.to_string(),
                 path: sending.path.to_string(),
-                size: sending.offset + sending.bytes.len() as u64,
-                mtime: 0,
+                size: sending.size,
+                mtime: sending.mtime,
                 offset: sending.offset,
             })),
         }];

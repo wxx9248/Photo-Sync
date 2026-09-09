@@ -20,7 +20,7 @@ use crate::catalog::{Catalog, CatalogEntry};
 use crate::digest::RunningDigest;
 use crate::effect::{Directory, Effect, LogLevel, RejectReason, ToSend, UploadOutcome};
 use crate::event::{Event, StorageOutcome};
-use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256};
+use crate::id::{DeviceId, DevicePath, FileId, OpId, Sha256, Timestamp};
 use crate::naming::CivilTime;
 use crate::port::StorageError;
 use crate::session::{FileIds, Input, Phase, PlannedSend, Session, Upload, UploadState, classify};
@@ -165,6 +165,7 @@ enum Pending {
     DropMismatched {
         device: DeviceId,
         file: FileId,
+        outcome: UploadOutcome,
     },
     RemoveMismatched {
         file: FileId,
@@ -266,8 +267,10 @@ impl Desktop {
                 device,
                 file,
                 path,
+                size,
+                mtime,
                 offset,
-            } => self.upload_opened(&device, file, &path, offset),
+            } => self.upload_opened(&device, file, &path, offset, size, mtime),
             Event::ChunkArrived {
                 device,
                 file,
@@ -748,6 +751,8 @@ impl Desktop {
         file: FileId,
         path: &DevicePath,
         offset: u64,
+        size: u64,
+        mtime: Timestamp,
     ) -> Vec<Effect> {
         let Some(session) = self.sessions.get(device) else {
             return vec![unknown_session(device)];
@@ -770,6 +775,12 @@ impl Desktop {
                     planned.path
                 ),
             );
+        }
+        // The catalog is frozen for the whole session, so a header stating a different size
+        // or time describes a photograph that changed under the phone since. What is on the
+        // disk is part of a file nobody is sending any more. `SPEC.md` §6.4.
+        if size != planned.size || mtime != planned.mtime {
+            return self.reject_changed(device, file, size, mtime);
         }
         // The watermark is the desktop's own record of what durably arrived, so a phone that
         // offers a different offset is refused rather than believed. SPEC.md §6.
@@ -1085,6 +1096,46 @@ impl Desktop {
         vec![Effect::FinalizeStagingFile { op, file }]
     }
 
+    /// A photograph that changed on the phone mid-session is skipped and reported, and
+    /// whatever partial the desktop was holding for it goes with it. `SPEC.md` §6.4.
+    ///
+    /// There is no re-transfer to buy: the file the phone holds now is not the file the
+    /// frozen catalog described, and this session only ever agreed to the second. The next
+    /// session catalogs the new version and sends it from the beginning.
+    fn reject_changed(
+        &mut self,
+        device: &DeviceId,
+        file: FileId,
+        size: u64,
+        mtime: Timestamp,
+    ) -> Vec<Effect> {
+        self.durable_digests.remove(&file);
+        if let Some(session) = self.sessions.get_mut(device) {
+            session.sends.remove(&file);
+            session.skipped += 1;
+        }
+
+        let op = self.begin(Pending::DropMismatched {
+            device: device.clone(),
+            file,
+            outcome: UploadOutcome::ChangedOnPhone,
+        });
+        vec![
+            Effect::Log {
+                level: LogLevel::Warn,
+                message: format!(
+                    "{file:?} is {size} bytes at {} on {device} now, not what the catalog \
+                     described, so it is skipped",
+                    mtime.0
+                ),
+            },
+            Effect::Store {
+                op,
+                request: StoreRequest::DropStagingEntry { file },
+            },
+        ]
+    }
+
     /// A digest that did not match costs the partial and buys one full re-transfer.
     /// `SPEC.md` §6.5.
     fn reject_content(&mut self, device: &DeviceId, file: FileId) -> Vec<Effect> {
@@ -1109,6 +1160,7 @@ impl Desktop {
         let op = self.begin(Pending::DropMismatched {
             device: device.clone(),
             file,
+            outcome: UploadOutcome::HashMismatch,
         });
         vec![
             Effect::Log {
@@ -1482,14 +1534,18 @@ impl Desktop {
                 let op = self.begin(Pending::RemoveSuperseded { file });
                 vec![Effect::RemoveStagingFile { op, file }]
             }
-            Pending::DropMismatched { device, file } => {
+            Pending::DropMismatched {
+                device,
+                file,
+                outcome,
+            } => {
                 let op = self.begin(Pending::RemoveMismatched { file });
                 vec![
                     Effect::RemoveStagingFile { op, file },
                     Effect::SendUploadResult {
                         device,
                         file,
-                        outcome: UploadOutcome::HashMismatch,
+                        outcome,
                     },
                 ]
             }

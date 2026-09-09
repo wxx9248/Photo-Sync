@@ -47,6 +47,12 @@ pub enum Event {
         device: DeviceId,
         file: FileId,
         path: DevicePath,
+
+        /// What the phone says the file is now. A photograph it changed since the catalog
+        /// froze no longer matches, and `SPEC.md` §6.4 skips it rather than storing a
+        /// mixture of two versions.
+        size: u64,
+        mtime: Timestamp,
         offset: u64,
     },
 

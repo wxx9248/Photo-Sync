@@ -163,6 +163,8 @@ impl Phone {
                 device: self.device.clone(),
                 file: wanted.file,
                 path: wanted.path.clone(),
+                size: file.size(),
+                mtime: file.mtime,
                 offset: wanted.resume_offset,
             });
             if from < to {
@@ -258,10 +260,14 @@ impl Phone {
         let Some(file) = self.files.get(&wanted.path) else {
             return;
         };
+        // What the file is now, not what the catalog said it was. A photograph edited since
+        // the session began says so here, and `SPEC.md` §6.4 skips it.
         sim.deliver(Event::UploadOpened {
             device: self.device.clone(),
             file: wanted.file,
             path: wanted.path.clone(),
+            size: file.size(),
+            mtime: file.mtime,
             offset: wanted.resume_offset,
         });
 

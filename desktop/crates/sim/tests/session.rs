@@ -224,10 +224,18 @@ fn offer_one_photo(sim: &mut Simulation) {
 }
 
 fn open_upload(sim: &mut Simulation, file: FileId, offset: u64) {
+    open_upload_of(sim, file, offset, PHOTO.len() as u64);
+}
+
+/// The same, for a photograph that is not the usual one. The header states what the phone
+/// holds now, which is how `SPEC.md` §6.4 notices a file that changed mid-session.
+fn open_upload_of(sim: &mut Simulation, file: FileId, offset: u64, size: u64) {
     sim.deliver(Event::UploadOpened {
         device: phone(),
         file,
         path: photo_path(),
+        size,
+        mtime: Timestamp(MTIME),
         offset,
     });
 }
@@ -620,7 +628,7 @@ fn a_long_file_is_made_durable_while_it_arrives() {
     let (to_send, _) = diff_of(&sim.take_log());
     let file = to_send[0].file;
 
-    open_upload(&mut sim, file, 0);
+    open_upload_of(&mut sim, file, 0, whole.len() as u64);
     send_bytes(&mut sim, file, 0, &half);
     let first = sim.take_log();
     send_bytes(&mut sim, file, half.len() as u64, &half);
@@ -1155,6 +1163,8 @@ fn a_second_batch_deduplicates_against_the_first() {
         device: phone(),
         file,
         path: second.clone(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     send_bytes(&mut sim, file, 0, PHOTO);
@@ -1205,6 +1215,8 @@ fn stage_two(sim: &mut Simulation, second: &[u8]) -> (FileId, FileId) {
         device: phone(),
         file: last,
         path: other,
+        size: second.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     send_bytes(sim, last, 0, second);
@@ -1604,4 +1616,47 @@ fn the_vault_copy_carries_the_time_the_photograph_had_on_the_phone() {
         Some(Timestamp(MTIME)),
         "the vault copy does not carry the phone's modification time"
     );
+}
+
+#[test]
+fn a_photograph_edited_since_the_catalog_was_taken_is_skipped() {
+    covers!("R-XFER-003");
+    let mut sim = fresh();
+    offer_one_photo(&mut sim);
+    let (to_send, _) = diff_of(&sim.take_log());
+    let file = to_send[0].file;
+
+    // The header says the file is four bytes longer than the catalog froze it at, so it is
+    // not the photograph this session agreed to take.
+    open_upload_of(&mut sim, file, 0, PHOTO.len() as u64 + 4);
+
+    let log = sim.take_log();
+    assert_eq!(upload_outcome(&log), UploadOutcome::ChangedOnPhone);
+    assert!(
+        sim.store.staged(file).is_none(),
+        "a manifest entry was kept for a photograph nobody is sending"
+    );
+}
+
+#[test]
+fn a_photograph_touched_since_the_catalog_was_taken_is_skipped() {
+    covers!("R-XFER-003");
+    let mut sim = fresh();
+    offer_one_photo(&mut sim);
+    let (to_send, _) = diff_of(&sim.take_log());
+    let file = to_send[0].file;
+
+    // Same size, later moment. Two photographs of the same length are still two photographs.
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME + 1),
+        offset: 0,
+    });
+
+    let log = sim.take_log();
+    assert_eq!(upload_outcome(&log), UploadOutcome::ChangedOnPhone);
+    assert!(sim.store.staged(file).is_none());
 }

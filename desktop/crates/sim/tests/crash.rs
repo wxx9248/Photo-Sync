@@ -82,6 +82,8 @@ fn send_all(sim: &mut Simulation, file: FileId) {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -106,6 +108,8 @@ fn a_partial_is_cut_back_to_its_watermark_when_the_machine_returns() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     // Ten bytes arrive and are made durable by the sync the connection loss forces; the rest
@@ -194,6 +198,8 @@ fn a_photo_the_desktop_never_finished_taking_is_asked_for_again() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -278,6 +284,8 @@ fn a_partial_longer_than_its_watermark_is_cut_back_to_it() {
         device: phone(),
         file,
         path: photo_path(),
+        size,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     for (offset, bytes) in [(0, &piece), (piece.len(), &piece)] {
@@ -459,6 +467,8 @@ fn a_transfer_the_power_interrupted_carries_on_from_the_watermark() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -483,6 +493,8 @@ fn a_transfer_the_power_interrupted_carries_on_from_the_watermark() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: offered,
     });
     sim.deliver(Event::ChunkArrived {
@@ -517,6 +529,8 @@ fn a_partial_that_cannot_be_read_back_starts_again() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -585,6 +599,8 @@ fn interrupted(sim: &mut Simulation, keep: usize) -> FileId {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -622,6 +638,8 @@ fn a_partial_with_nothing_durable_is_not_read_back() {
         device: phone(),
         file,
         path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     // The row exists and no byte of the photograph ever reached the disk.
@@ -718,6 +736,8 @@ fn a_long_partial_is_read_back_a_chunk_at_a_time() {
         device: phone(),
         file,
         path: photo_path(),
+        size: long.len() as u64,
+        mtime: Timestamp(MTIME),
         offset: 0,
     });
     sim.deliver(Event::ChunkArrived {
@@ -739,6 +759,60 @@ fn a_long_partial_is_read_back_a_chunk_at_a_time() {
         resume_offset_in(&answered),
         Some(KEPT as u64),
         "the prefix was not rebuilt to the watermark"
+    );
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_is_discarded_when_the_photograph_changes_mid_session() {
+    covers!("R-XFER-003");
+    let mut sim = desktop();
+    interrupted(&mut sim, 10);
+
+    // The catalog is frozen and still describes the photograph as it was, so the diff offers
+    // the partial's watermark. SPEC.md §6.2.
+    let answered = answered_for(&mut sim, vec![only_photo()]);
+    let (file, offset) = match answered.iter().find_map(|effect| match effect {
+        photo_sync_core::Effect::SendDiff { to_send, .. } => {
+            to_send.first().map(|one| (one.file, one.resume_offset))
+        }
+        _ => None,
+    }) {
+        Some(found) => found,
+        None => panic!("the desktop asked for nothing"),
+    };
+    assert_eq!(offset, 10);
+    assert!(sim.store.staged(file).is_some());
+
+    // At send time the phone finds the photograph is not the one it catalogued. Nothing it
+    // could send now would finish the file on the desktop's disk.
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        size: PHOTO.len() as u64 + 4,
+        mtime: Timestamp(MTIME),
+        offset,
+    });
+
+    let log = sim.take_log();
+    assert!(
+        log.iter().any(|effect| matches!(
+            effect,
+            photo_sync_core::Effect::SendUploadResult {
+                outcome: photo_sync_core::effect::UploadOutcome::ChangedOnPhone,
+                ..
+            }
+        )),
+        "the phone was not told the photograph had changed"
+    );
+    assert!(
+        sim.store.staged(file).is_none(),
+        "the manifest kept an entry for a photograph nobody is sending"
+    );
+    assert!(
+        !sim.storage.holds(file),
+        "the partial for a changed photograph was kept"
     );
     agreed(&sim);
 }

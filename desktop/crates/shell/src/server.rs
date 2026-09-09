@@ -194,6 +194,8 @@ impl wire::photo_sync_server::PhotoSync for SyncService {
                         device: device.clone(),
                         file: named,
                         path: DevicePath::new(header.path),
+                        size: header.size,
+                        mtime: Timestamp(header.mtime),
                         offset: header.offset,
                     });
                 }

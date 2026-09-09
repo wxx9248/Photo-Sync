@@ -115,6 +115,7 @@ impl Model {
                 file,
                 path,
                 offset,
+                ..
             } => {
                 self.arriving.insert(
                     *file,
