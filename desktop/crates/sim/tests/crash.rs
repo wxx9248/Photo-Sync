@@ -928,3 +928,29 @@ fn a_photograph_is_not_given_up_for_whatever_sits_at_its_name() {
     assert_eq!(sim.store.device_files().len(), 1);
     agreed(&sim);
 }
+
+#[test]
+fn staging_a_phone_never_came_back_for_is_committed_when_somebody_asks() {
+    covers!("R-UI-001");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+
+    // The photograph is verified and staged, and the phone is gone: lost, flat, or reset to a
+    // new device identity, which is the case §4's "Commit now" exists for. It never sends a
+    // finish signal, so without somebody asking, this sits in staging forever.
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+    assert!(sim.storage.vault().is_empty());
+    assert_eq!(sim.store.manifest().len(), 1);
+
+    sim.deliver(Event::ManualCommitRequested { device: phone() });
+
+    assert_eq!(
+        sim.storage.vault().len(),
+        1,
+        "the photograph nobody came back for is still stranded"
+    );
+    assert_eq!(sim.store.device_files().len(), 1);
+    assert!(sim.store.manifest().is_empty(), "staging was not cleared");
+    agreed(&sim);
+}

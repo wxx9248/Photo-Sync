@@ -11,7 +11,7 @@ photo-sync-protocol.workspace = true
 rcgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-toml.workspace = true
+toml = { version = "0.9", features = ["parse"] }
 rustls.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
@@ -23,6 +23,7 @@ refinery.workspace = true
 rusqlite.workspace = true
 rustix.workspace = true
 mdns-sd = "0.21"
+zbus = "5"
 
 [lints]
 workspace = true

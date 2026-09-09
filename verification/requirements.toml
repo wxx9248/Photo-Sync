@@ -529,19 +529,19 @@ quote = "mDNS/DNS-SD, service type `_photosync._tcp`."
 id = "R-UI-001"
 section = "§4"
 area = "UI"
-status = "deferred"
+status = "active"
 quote = "staged sessions with a manual **\"Commit now\"** action"
 
 [[requirement]]
 id = "R-UI-002"
 section = "§4"
 area = "UI"
-status = "deferred"
+status = "active"
 quote = "**Inhibits system suspend** while any session is active."
 
 [[requirement]]
 id = "R-UI-003"
 section = "§4"
 area = "UI"
-status = "deferred"
+status = "active"
 quote = "changing it moves nothing"

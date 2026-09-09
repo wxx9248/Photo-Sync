@@ -7,7 +7,9 @@
 //!
 //! [`Effect`]: photo_sync_core::Effect
 
+pub mod autostart;
 pub mod clock;
+pub mod config;
 pub mod desk;
 pub mod discovery;
 pub mod identity;
@@ -16,4 +18,5 @@ pub mod serve;
 pub mod server;
 pub mod storage;
 pub mod store;
+pub mod suspend;
 pub mod tls;
