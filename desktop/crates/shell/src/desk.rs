@@ -16,6 +16,7 @@ use photo_sync_core::effect::{Effect, LogLevel};
 use photo_sync_core::event::{Event, StorageOutcome};
 use photo_sync_core::port::StorageError;
 
+use crate::suspend::{self, Busy, Inhibition};
 use crate::views::Views;
 
 use crate::clock;
@@ -33,6 +34,13 @@ pub struct Desk {
     /// What the window would show. Kept here because this is the one place every effect
     /// passes through, so nothing can happen that the window never hears about.
     views: Views,
+
+    /// Which phones are mid-session, and the promise held while any of them are.
+    ///
+    /// `SPEC.md` §4 asks the desktop to inhibit suspend while a session is active, and this
+    /// is the one place that knows when one starts: every event a phone causes arrives here.
+    busy: Busy,
+    inhibition: Option<Inhibition>,
 }
 
 impl Desk {
@@ -49,6 +57,8 @@ impl Desk {
             vault: vault.to_path_buf(),
             log: Vec::new(),
             views: Views::new(),
+            busy: Busy::new(),
+            inhibition: None,
         };
         let started = clock::now();
         desk.deliver(Event::Started { now: started.at });
@@ -56,6 +66,33 @@ impl Desk {
     }
 
     /// Delivers one event and performs everything it leads to.
+    /// Takes or releases the promise that the machine will stay awake.
+    ///
+    /// The first phone to arrive takes it and the last to leave releases it, because a second
+    /// phone is already covered by the promise the first one made. A machine that will not
+    /// give one is logged once and otherwise carried on with: photographs still move, the
+    /// machine might go to sleep underneath them, and the next session picks up where this
+    /// one stopped.
+    fn mind_the_clock(&mut self, event: &Event) {
+        match event {
+            Event::PeerConnected { device, .. } => {
+                if self.busy.started(device) {
+                    match suspend::inhibit("moving photographs off a phone") {
+                        Ok(held) => self.inhibition = Some(held),
+                        Err(error) => tracing::warn!("{error}"),
+                    }
+                }
+            }
+            Event::PeerDisconnected { device } => {
+                if self.busy.ended(device) {
+                    // Dropping it is how the machine is told it may sleep again.
+                    self.inhibition = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// What the window should be showing now.
     #[must_use]
     pub fn views(&self) -> &Views {
@@ -63,6 +100,7 @@ impl Desk {
     }
 
     pub fn deliver(&mut self, event: Event) {
+        self.mind_the_clock(&event);
         let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
         while let Some(effect) = queue.pop_front() {
             let completion = self.perform(&effect);

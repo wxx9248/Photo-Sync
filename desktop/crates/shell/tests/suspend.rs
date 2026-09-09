@@ -17,11 +17,15 @@ fn the_login_manager_agrees_to_hold_off_sleeping() {
         // and dropping it is how logind is told the machine may sleep again.
         Ok(held) => drop(held),
 
-        // No login manager here. A build machine is the usual reason, and it is still a
-        // perfectly good machine to sync photographs on. Said out loud, so a run that skipped
-        // this is not mistaken for a run that checked it.
-        Err(suspend::SuspendError::Unavailable(why)) => {
-            println!("not checked here: {why}");
+        // Nothing to ask, or nothing this process may ask. A build agent is outside any
+        // login session and is refused on those grounds, which says nothing about what
+        // happens on somebody's desktop. Said out loud, so a run that skipped this is not
+        // mistaken for a run that checked it.
+        Err(
+            error
+            @ (suspend::SuspendError::Unavailable(_) | suspend::SuspendError::NotPermitted(_)),
+        ) => {
+            println!("not checked here: {error}");
         }
 
         // There was one and it said no, which is the case worth failing over: that machine

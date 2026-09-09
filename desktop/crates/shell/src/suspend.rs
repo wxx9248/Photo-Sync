@@ -59,17 +59,22 @@ pub struct Inhibition {
 
 /// Why the machine could not be asked to stay awake.
 ///
-/// The two cases are worth telling apart. A machine with no login manager was never going to
-/// answer and is still a perfectly good machine to sync photographs on; a login manager that
-/// declined is a machine that will sleep in the middle of a transfer, and somebody should
-/// know. A caller that treats them alike is either alarming people for nothing or hiding the
-/// case that matters.
+/// The three cases are worth telling apart, because only one of them is a problem.
+///
+/// A machine with no login manager was never going to answer and still syncs photographs
+/// perfectly well. A process that is not part of a login session — a build agent, a container
+/// — is refused on those grounds and that says nothing about what happens on somebody's
+/// desktop. A login manager that had every reason to agree and did not is the case that
+/// matters: that machine will fall asleep in the middle of a transfer.
 #[derive(Debug)]
 pub enum SuspendError {
     /// No system bus, or no login manager on it.
     Unavailable(String),
 
-    /// There is one, and it would not.
+    /// There is one, and this process may not ask it.
+    NotPermitted(String),
+
+    /// There is one, this process may ask, and it would not.
     Refused(String),
 }
 
@@ -77,6 +82,10 @@ impl std::fmt::Display for SuspendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unavailable(why) => write!(f, "there is no login manager here: {why}"),
+            Self::NotPermitted(why) => write!(
+                f,
+                "the login manager will not take an inhibitor from this process: {why}"
+            ),
             Self::Refused(why) => write!(f, "the login manager would not hold off sleeping: {why}"),
         }
     }
@@ -113,18 +122,24 @@ pub fn inhibit(why: &str) -> Result<Inhibition, SuspendError> {
     Ok(Inhibition { _held: held.into() })
 }
 
-/// A bus with nothing listening on that name is a machine without a login manager, which is
-/// a different thing from one that said no.
+/// Sorts what came back into the three things it can mean.
+///
+/// A bus with nothing listening on that name is a machine without a login manager. A denial
+/// is the caller being outside a login session, which is what a build agent is and what a
+/// person at their desk is not. Anything else is a refusal on the merits.
 fn classify(error: zbus::Error) -> SuspendError {
     let described = error.to_string();
-    let absent = described.contains("ServiceUnknown")
+    if described.contains("ServiceUnknown")
         || described.contains("NameHasNoOwner")
-        || described.contains("was not provided by any .service");
-    if absent {
-        SuspendError::Unavailable(described)
-    } else {
-        SuspendError::Refused(described)
+        || described.contains("was not provided by any .service")
+    {
+        return SuspendError::Unavailable(described);
     }
+    if described.contains("AccessDenied") || described.contains("InteractiveAuthorizationRequired")
+    {
+        return SuspendError::NotPermitted(described);
+    }
+    SuspendError::Refused(described)
 }
 
 #[cfg(test)]
