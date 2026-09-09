@@ -11,5 +11,15 @@ rust-version.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 
+# Deliberately wrong implementations, one at a time, for `./verify self-test`. Each one is a
+# rule `SPEC.md` states and the suite claims to enforce. A harness that cannot show it detects
+# these has no standing to certify anything, so they live here rather than in a branch nobody
+# runs. Only the self-test ever turns one on.
+[features]
+sabotage-donemark = []
+sabotage-watermark = []
+sabotage-dedup = []
+sabotage-nomination = []
+
 [lints]
 workspace = true

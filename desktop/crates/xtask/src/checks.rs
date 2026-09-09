@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::cli::Tier;
 use crate::report::{Campaign, CheckResult, Failure, Report, Requirements};
 use crate::requirements::{Registry, Status};
-use crate::{campaign, coverage, mutants, scenario, spec_check, tools, workspace};
+use crate::{campaign, coverage, mutants, scenario, selftest, spec_check, tools, workspace};
 
 /// Paths that define correctness. Changing one without changing the specification is the
 /// failure mode the gate exists to catch.
@@ -76,6 +76,11 @@ pub fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
 
     if matches!(tier, Tier::Nightly) {
         report.add(mutation(root)?);
+        report.add(CheckResult::from_outcome(
+            "self-test",
+            selftest::run(root)?,
+            "the harness did not notice a desktop that was wrong",
+        ));
     }
 
     report.finish(&workspace::reports_directory(root))?;

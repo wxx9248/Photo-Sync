@@ -470,11 +470,19 @@ impl Desktop {
     /// single done-mark is written, because a done-mark that outlives its rename would tell
     /// recovery a file is in the vault when it is not.
     fn sync_vault(&mut self) -> Vec<Effect> {
-        let op = self.begin(Pending::Commit(Step::SyncVault));
-        vec![Effect::SyncDirectory {
-            op,
-            directory: Directory::Vault,
-        }]
+        // SABOTAGE: a done-mark written before the directories are durable. A done-mark that
+        // survives a power loss then claims a rename that did not.
+        #[cfg(feature = "sabotage-donemark")]
+        return self.mark_group_done();
+
+        #[cfg(not(feature = "sabotage-donemark"))]
+        {
+            let op = self.begin(Pending::Commit(Step::SyncVault));
+            vec![Effect::SyncDirectory {
+                op,
+                directory: Directory::Vault,
+            }]
+        }
     }
 
     fn sync_staging(&mut self) -> Vec<Effect> {

@@ -12,6 +12,7 @@ mod mutants;
 mod report;
 mod requirements;
 mod scenario;
+mod selftest;
 mod spec_check;
 mod tools;
 mod workspace;
@@ -51,6 +52,7 @@ fn run(command: Command) -> Result<bool, String> {
         Command::Matrix => coverage::print_matrix(&root),
         Command::Doctor => doctor::run(&root),
         Command::Mutants { module } => mutants::run(&root, module.as_deref()),
+        Command::SelfTest => selftest::run(&root),
         Command::Replay { seed } => {
             let outcome = campaign::replay_one(&seed)?;
             campaign::print_failures(&outcome);
@@ -67,9 +69,6 @@ fn run(command: Command) -> Result<bool, String> {
             Ok(outcome.passed())
         }
         Command::ProtectedArtifacts { against } => checks::protected_artifacts(&root, &against),
-        Command::NotYetBuilt { name, milestone } => Err(format!(
-            "`{name}` arrives in milestone {milestone}. See docs/ROADMAP.md."
-        )),
     }
 }
 

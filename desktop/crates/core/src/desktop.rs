@@ -318,6 +318,12 @@ impl Desktop {
     /// whole point of §7.6, because a buffered write can leave a file longer than what
     /// survived the power going out.
     fn recover_staging(&mut self, entries: &[StagingEntry]) -> Vec<Effect> {
+        // SABOTAGE: a partial trusted at whatever length the crash left it, rather than cut
+        // back to the bytes a sync proved. The tail past the watermark is not the photograph.
+        #[cfg(feature = "sabotage-watermark")]
+        return Vec::new();
+
+        #[cfg(not(feature = "sabotage-watermark"))]
         entries
             .iter()
             .filter(|entry| !entry.is_verified())

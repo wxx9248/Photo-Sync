@@ -9,8 +9,8 @@ pub enum Command {
     Scenario { id: String, real: bool },
     Mutants { module: Option<String> },
     Replay { seed: String },
+    SelfTest,
     ProtectedArtifacts { against: String },
-    NotYetBuilt { name: String, milestone: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,10 +62,7 @@ pub fn parse(arguments: &[String]) -> Result<Command, String> {
         ["verify", "replay", seed] | ["replay", seed] => Ok(Command::Replay {
             seed: (*seed).to_string(),
         }),
-        ["verify", name @ "self-test", ..] => Ok(Command::NotYetBuilt {
-            name: (*name).to_string(),
-            milestone: "M2".to_string(),
-        }),
+        ["verify", "self-test"] | ["self-test"] => Ok(Command::SelfTest),
         _ => Err(format!("unrecognised arguments: {}", words.join(" "))),
     }
 }
@@ -83,6 +80,7 @@ pub fn usage() -> String {
         "  scenario <id> [--real]         one acceptance scenario, simulated or on the real stack",
         "  mutants [module]               does the suite detect a wrong implementation?",
         "  replay <seed>                  one campaign run, exactly as it happened",
+        "  self-test                      does the harness notice a desktop that is wrong?",
         "  protected-artifacts --against <ref>",
     ]
     .join("\n")

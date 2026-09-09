@@ -99,6 +99,18 @@ pub fn plan(inputs: &Inputs<'_>) -> Plan {
             }
         };
 
+        // SABOTAGE: a duplicate earning its phone no index row. The row is what later says
+        // the photograph may be deleted, so without it the phone keeps a copy forever.
+        #[cfg(feature = "sabotage-dedup")]
+        if matches!(action, PlanAction::Duplicate { .. }) {
+            plan.entries.push(PlanEntry {
+                file: entry.file,
+                action,
+                done: false,
+            });
+            continue;
+        }
+
         plan.device_files.push(DeviceFileRow {
             device: inputs.device.clone(),
             path: entry.path.clone(),

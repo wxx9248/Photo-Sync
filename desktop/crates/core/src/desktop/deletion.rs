@@ -123,6 +123,11 @@ impl Desktop {
             return Vec::new();
         };
 
+        // SABOTAGE: nomination trusting the index without looking at the vault. A photograph
+        // somebody curated away would then be offered for deletion from the phone as well.
+        #[cfg(feature = "sabotage-nomination")]
+        let found = Some(row.size);
+
         if found == Some(row.size) {
             let origin = if session.nomination.committed.contains(&row.path) {
                 CandidateOrigin::ThisTransfer
