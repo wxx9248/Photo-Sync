@@ -55,6 +55,11 @@ struct Staged {
 struct Arriving {
     device: DeviceId,
     path: DevicePath,
+
+    /// What the phone said the file was when it opened the upload. A photograph it changed
+    /// since the catalog froze does not match, and `SPEC.md` §6.4 skips it.
+    size: u64,
+    mtime: Timestamp,
 }
 
 #[derive(Debug, Default)]
@@ -114,14 +119,17 @@ impl Model {
                 device,
                 file,
                 path,
+                size,
+                mtime,
                 offset,
-                ..
             } => {
                 self.arriving.insert(
                     *file,
                     Arriving {
                         device: device.clone(),
                         path: path.clone(),
+                        size: *size,
+                        mtime: *mtime,
                     },
                 );
                 // Whatever lies past the point the desktop asked to carry on from is about to
@@ -188,6 +196,11 @@ impl Model {
         else {
             return;
         };
+        // The catalog is what this session agreed to take. A file the phone described
+        // differently when it sent it is a different photograph, whatever it hashes to.
+        if entry.size != arriving.size || entry.mtime != arriving.mtime {
+            return;
+        }
 
         let staged = self.staged.entry(arriving.device).or_default();
         staged.retain(|held| held.path != arriving.path);
