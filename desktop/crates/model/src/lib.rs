@@ -53,8 +53,8 @@ struct Staged {
 /// A transfer in progress, which counts for nothing until it is whole.
 #[derive(Clone, Debug)]
 struct Arriving {
+    device: DeviceId,
     path: DevicePath,
-    digest: RunningDigest,
 }
 
 #[derive(Debug, Default)]
@@ -63,7 +63,18 @@ pub struct Model {
     catalogs: BTreeMap<DeviceId, BTreeMap<DevicePath, CatalogEntry>>,
 
     /// Files arriving now, by the identifier the desktop gave them.
-    arriving: BTreeMap<FileId, (DeviceId, Arriving)>,
+    arriving: BTreeMap<FileId, Arriving>,
+
+    /// Every byte watched into each file so far, kept across a power loss.
+    ///
+    /// A resumed transfer sends only the part the desktop says it is missing, while the
+    /// phone still states a digest over the whole photograph. Checking that digest therefore
+    /// needs the earlier part too. The desktop reads it back off its own disk; this
+    /// remembers watching it arrive, which is the same answer reached independently. The
+    /// resume point is taken from the desktop, so a desktop that carried on from further
+    /// along than it really held would hash bytes this never saw and the two would disagree,
+    /// which is the disagreement worth catching.
+    partials: BTreeMap<(DeviceId, DevicePath), Vec<u8>>,
 
     /// Files the desktop said it could not store.
     refused: BTreeSet<FileId>,
@@ -100,22 +111,33 @@ impl Model {
                 );
             }
             Event::UploadOpened {
-                device, file, path, ..
+                device,
+                file,
+                path,
+                offset,
             } => {
                 self.arriving.insert(
                     *file,
-                    (
-                        device.clone(),
-                        Arriving {
-                            path: path.clone(),
-                            digest: RunningDigest::new(),
-                        },
-                    ),
+                    Arriving {
+                        device: device.clone(),
+                        path: path.clone(),
+                    },
                 );
+                // Whatever lies past the point the desktop asked to carry on from is about to
+                // be sent again, so it is forgotten rather than counted twice.
+                let seen = self
+                    .partials
+                    .entry((device.clone(), path.clone()))
+                    .or_default();
+                seen.truncate(usize::try_from(*offset).unwrap_or(usize::MAX));
             }
             Event::ChunkArrived { file, data, .. } => {
-                if let Some((_, arriving)) = self.arriving.get_mut(file) {
-                    arriving.digest.update(data);
+                if let Some(arriving) = self.arriving.get(file)
+                    && let Some(seen) = self
+                        .partials
+                        .get_mut(&(arriving.device.clone(), arriving.path.clone()))
+                {
+                    seen.extend_from_slice(data);
                 }
             }
             Event::UploadClosed { file, digest, .. } => self.close(*file, *digest),
@@ -126,7 +148,8 @@ impl Model {
                 self.commit(device);
             }
             // A restart forgets what was in flight and nothing else. A file the desktop had
-            // verified was written down before it said so.
+            // verified was written down before it said so, and the part of a file that had
+            // reached the disk is still there to be carried on from.
             Event::Started { .. } => {
                 self.arriving.clear();
                 self.catalogs.clear();
@@ -147,21 +170,25 @@ impl Model {
 
     /// A file is only worth anything when it arrived whole and matched what the phone said.
     fn close(&mut self, file: FileId, claimed: Sha256) {
-        let Some((device, arriving)) = self.arriving.remove(&file) else {
+        let Some(arriving) = self.arriving.remove(&file) else {
             return;
         };
-        if self.refused.contains(&file) || arriving.digest.peek() != claimed {
+        let key = (arriving.device.clone(), arriving.path.clone());
+
+        let mut digest = RunningDigest::new();
+        digest.update(self.partials.get(&key).map_or(&[][..], Vec::as_slice));
+        if self.refused.contains(&file) || digest.peek() != claimed {
             return;
         }
         let Some(entry) = self
             .catalogs
-            .get(&device)
+            .get(&arriving.device)
             .and_then(|catalog| catalog.get(&arriving.path))
         else {
             return;
         };
 
-        let staged = self.staged.entry(device).or_default();
+        let staged = self.staged.entry(arriving.device).or_default();
         staged.retain(|held| held.path != arriving.path);
         staged.push(Staged {
             path: arriving.path,
@@ -183,6 +210,8 @@ impl Model {
     /// later says the phone may delete it.
     fn commit(&mut self, device: &DeviceId) {
         for staged in self.staged.remove(device).unwrap_or_default() {
+            // The file is whole and accounted for; nothing is left to carry on from.
+            self.partials.remove(&(device.clone(), staged.path.clone()));
             if !self.expected.content.contains(&staged.digest) {
                 self.expected.vault.insert(staged.digest);
             }
@@ -237,8 +266,8 @@ impl Model {
         // against the file rather than acted on once: what matters is that this file does not
         // end up counted, whenever the news comes.
         self.refused.insert(file);
-        if let Some((device, arriving)) = self.arriving.get(&file)
-            && let Some(staged) = self.staged.get_mut(device)
+        if let Some(arriving) = self.arriving.get(&file)
+            && let Some(staged) = self.staged.get_mut(&arriving.device)
         {
             staged.retain(|held| held.path != arriving.path);
         }
