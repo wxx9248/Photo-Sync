@@ -29,21 +29,24 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 ### Run it somewhere this machine cannot
 
-- [ ] **The Android instrumented tests.** They compile and have never executed: the emulator
-      starts here but does not survive its launching command, and Gradle's managed-device
-      snapshot step fails before that. On a machine where an emulator stays up:
-      `cd android && ./gradlew :app:connectedDebugAndroidTest`. Four tests, all about what
-      MediaStore does rather than what this code does with the answer. When they pass,
-      `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13)
+- [ ] **The Android instrumented tests.** They compile and have never executed. With the SDK,
+      the emulator and a system image all installed here, the guest now boots properly --- init
+      reaches `surfaceflinger`, `adbd` and `bootanim`, and `adb` sees the device --- and then the
+      emulator process on the host exits with status 1 and no message, a minute or two in.
+      Renderer, memory and core count make no difference, and Gradle's managed-device path
+      fails the same way. It reads like the container rather than the project. On a machine
+      where an emulator stays up: `cd android && ./gradlew :app:phoneDebugAndroidTest`. Four
+      tests, all about what MediaStore does rather than what this code does with the answer.
+      When they pass, `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13, §16)
 - [ ] **Discovery against a real phone.** The responder is checked against another Rust daemon
       on this machine; multicast across a home router and `NsdManager`'s reading of the records
       are what only a real network answers. The phone's side of it was rewritten in §15 and has
-      never run. (§11, §15)
+      never run. Worth doing on an Android 12 or 13 phone in particular: that is where §16's
+      lint error would have thrown. (§11, §15, §16)
 - [ ] **A video, across the wire.** The phone used to gather a whole file in memory before
-      sending it, so anything larger than free RAM could not cross. It now streams. Nothing in
-      `./verify` reaches that class: the phone's tests stop at the state machine and this is
-      the adapter under it. Send a photograph and then a long video, and watch the phone's
-      memory while it goes. (§15)
+      sending it, so anything larger than free RAM could not cross. It streams now, and a test
+      holds it to that. What the test cannot show is the number: send a photograph and then a
+      long video, and watch the phone's memory while it goes. (§15, §16)
 - [ ] **Restart the desktop after pairing.** It read its paired phones from a path nothing
       wrote to, so it woke up knowing nobody. Fixed, and unreachable by any test, because the
       defect was in `main`. Pair a phone, quit the desktop, start it again, and check the phone
@@ -578,3 +581,34 @@ review.
   Android type and could be tested against an in-process server, but `./verify` runs only
   `:session:test`, and reaching the application module needs the Android SDK on the build
   server. That is why two of the fixes above are in §0 rather than in the suite.
+
+## 16. What the application module's checks turned up
+
+The harness reached the session module and stopped. Nothing built the Android application, ran
+a test against it, or pointed Android Lint at it, so a change that broke the application passed
+every check. Three checks now run in the full tier, one Gradle task each: the module builds,
+its unit tests pass, and lint is content. They need the Android SDK, which nothing else here
+does, so a machine without one skips them and says so.
+
+**Lint found a defect on the first run.** `NsdServiceInfo.hostAddresses` arrived in Android 14,
+and on Android 13 only with the seventh Tiramisu extension. `SPEC.md` §3.1 starts this
+application at Android 12, so on the floor of its own supported range discovery reached for a
+method that is not there. It compiles, and it would have thrown the moment a desktop answered.
+
+**The application module now has unit tests.** `GrpcDesktop` holds no Android type, so all of
+it runs against a gRPC server in this process; `FilePairingStorage` is ordinary file I/O. Nine
+tests, and both fixes from §15 are among them.
+
+Each was checked by putting the old behaviour back rather than by trusting that it passes.
+Buffering the file again fails two of them, and restoring `runCatching` fails a third. A test
+that passes either way is not evidence, and these two mattered: they are the fixes nothing
+could confirm when they were written.
+
+### Left alone, and why
+
+- **Eight lint warnings.** Two ask for plurals rather than `%d` in the strings, which matters
+  in both languages and is a translation change rather than a code one. Two are about Selected
+  Photos Access on Android 14, which is a product decision about partial media grants and not
+  something to settle in an inspection. The rest are backup and data-extraction rules. Lint
+  fails on errors only; making warnings fail would mean settling all eight first.
+- **The emulator.** See §0. The guest boots; the host process does not stay up.
