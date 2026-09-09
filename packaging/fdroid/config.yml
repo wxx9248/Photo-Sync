@@ -1,0 +1,42 @@
+# A self-hosted F-Droid repository for the family's phones.
+#
+# `STACK.md` §4.8 chose this over the Play Store: it gives automatic updates without a Play
+# Console account, without a review of MANAGE_MEDIA, and without Google's targetSdk schedule.
+# The permission model of `SPEC.md` §3.1 stays Play-compliant anyway, as a self-imposed
+# constraint rather than an imposed one.
+#
+# Nothing secret belongs in this file. The signing keystore and its passwords are supplied
+# from the environment when the repository is built, so this can live in the repository the
+# application itself does.
+
+repo_url: https://example.invalid/fdroid/repo
+repo_name: Photo Sync
+repo_description: >-
+  Photographs off the family's phones and onto the computer at home.
+repo_icon: icon.png
+
+archive_older: 3
+archive_url: https://example.invalid/fdroid/archive
+archive_name: Photo Sync (older versions)
+archive_description: >-
+  Versions kept for phones that have not updated in a while.
+
+# Supplied by the environment. `fdroidserver` reads these when it signs the index and the
+# packages; they are never written down here.
+#   FDROID_KEYSTORE       the keystore file
+#   FDROID_KEYSTOREPASS   its password
+#   FDROID_KEYPASS        the key's password
+#   FDROID_KEYALIAS       which key inside it
+keystore: env:FDROID_KEYSTORE
+keystorepass: env:FDROID_KEYSTOREPASS
+keypass: env:FDROID_KEYPASS
+repo_keyalias: env:FDROID_KEYALIAS
+
+# THE ONE OPERATIONAL RULE, from `STACK.md` §4.8.
+#
+# This keystore must be kept forever and backed up off this machine. `ANDROID_ID` — the
+# device identity that keys staging directories and index rows — is derived per application
+# signing key. Losing the keystore re-identifies every phone in the house: their staging
+# directories are orphaned and their index rows stranded. The specification's failure
+# analysis calls that duplicate re-imports rather than data loss, so nothing is destroyed,
+# but every photograph would cross the network again and it is entirely avoidable.

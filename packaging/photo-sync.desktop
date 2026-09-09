@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Sync
+Name[zh_CN]=照片同步
+Comment=Keeps the family's photographs off their phones
+Comment[zh_CN]=把家人的照片从手机上转移到电脑
+Exec=photo-sync
+Icon=photo-sync
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=photo;backup;phone;sync;
+StartupNotify=false

@@ -1,0 +1,27 @@
+# What F-Droid shows about the application. Everything here is descriptive; the build itself
+# is done by Gradle before `fdroid update` runs, so there is no build recipe to keep correct.
+Categories:
+  - Multimedia
+  - System
+License: GPL-3.0-or-later
+SourceCode: https://github.com/wxx9248/Photo-Sync
+IssueTracker: https://github.com/wxx9248/Photo-Sync/issues
+
+AutoName: Photo Sync
+Summary: Photographs off your phone and onto the computer at home
+
+Description: |-
+  Moves photographs and videos from the phone to a computer on the same network, and then
+  frees the space they were taking up.
+
+  Nothing leaves the house. The phone and the computer recognise each other by a key that is
+  confirmed once, with a six-digit code shown on both screens, and talk directly over the
+  local network afterwards. There is no account and no server.
+
+  A photograph is only deleted from the phone once the computer has proved it holds the same
+  bytes — by checking the file's fingerprint, not by trusting a record of it.
+
+RepoType: git
+Repo: https://github.com/wxx9248/Photo-Sync.git
+
+AllowedAPKSigningKeys: []

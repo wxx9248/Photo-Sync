@@ -28,7 +28,7 @@ PKGBUILD.
 
 ```sh
 sudo dnf install -y git rustup protobuf-compiler gcc gcc-c++ pkgconf-pkg-config \
-    java-21-openjdk-devel
+    java-25-openjdk-devel gettext
 
 rustup-init -y
 rustup default stable
@@ -37,14 +37,32 @@ rustup component add rustfmt clippy
 cargo install cargo-nextest cargo-mutants cargo-deny cargo-audit
 ```
 
-Install JDK 21 rather than a newer one, because the Android Gradle plugin supports it and later
-versions lag behind.
+JDK 25 is the current long-term release and is what both halves target: the Kotlin modules set
+`jvmToolchain(25)` and the Android Gradle plugin compiles against it. The document used to pin
+21 on the assumption that the plugin lagged; it does not, and Fedora 44 has no 21 package
+anyway, so the setup command failed as written.
 
-The graphical shell arrives in milestone M7 and needs a few more development packages:
+Gradle itself is not installed: `android/gradlew` fetches the version the project uses, so a
+clean machine needs only the JDK.
+
+The graphical shell needs a few more development packages:
 
 ```sh
 sudo dnf install -y fontconfig-devel libxkbcommon-devel wayland-devel \
+    libX11-devel libXcursor-devel libXrandr-devel libXi-devel \
     mesa-libEGL-devel mesa-libGL-devel
+```
+
+The Android SDK is not packaged. Install the command-line tools somewhere of your choosing and
+point `ANDROID_HOME` at it:
+
+```sh
+mkdir -p ~/Android/sdk/cmdline-tools
+# unpack commandlinetools-linux-*.zip so that its `cmdline-tools` becomes `latest`
+export ANDROID_HOME=~/Android/sdk
+yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+    "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 ```
 
 Then clone and check the setup:

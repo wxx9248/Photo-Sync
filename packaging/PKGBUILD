@@ -1,0 +1,65 @@
+# Maintainer: wxx9248 <wxx9248@gmail.com>
+#
+# One binary, a desktop entry and an icon. `STACK.md` §3.10 rules out a system service on
+# purpose: the application needs the graphical session for its tray and for the sleep
+# inhibitor it holds, so it is started by the session and not by systemd. Nothing is enabled
+# after installation and nothing runs as root.
+
+pkgname=photo-sync
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Keeps the family's photographs off their phones"
+arch=('x86_64' 'aarch64')
+url="https://github.com/wxx9248/Photo-Sync"
+license=('GPL-3.0-or-later')
+
+# Everything else is vendored by cargo. These are what the desktop needs from the system:
+# fontconfig and the windowing libraries for the window, sqlite for the index, and dbus for
+# the tray and the sleep inhibitor.
+depends=('fontconfig' 'libxkbcommon' 'sqlite' 'dbus')
+makedepends=('cargo' 'protobuf' 'git' 'gettext')
+
+# The identity, the index and the settings live in the user's own directories, so there is
+# nothing to back up here and nothing to migrate on upgrade.
+backup=()
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$srcdir/Photo-Sync-$pkgver/desktop"
+    # A reproducible build wants the lock file honoured rather than resolved again.
+    cargo fetch --locked
+}
+
+build() {
+    cd "$srcdir/Photo-Sync-$pkgver/desktop"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --bin photo-sync
+}
+
+check() {
+    cd "$srcdir/Photo-Sync-$pkgver/desktop"
+    export RUSTUP_TOOLCHAIN=stable
+    # The simulator and the real-stack tests both run here. They need no network and no
+    # display; the window is the one thing this cannot check, and it is checked by hand.
+    cargo test --frozen --release --workspace
+}
+
+package() {
+    cd "$srcdir/Photo-Sync-$pkgver"
+    install -Dm755 "desktop/target/release/photo-sync" "$pkgdir/usr/bin/photo-sync"
+    install -Dm644 "packaging/photo-sync.desktop" \
+        "$pkgdir/usr/share/applications/photo-sync.desktop"
+    install -Dm644 "packaging/photo-sync.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/photo-sync.svg"
+    install -Dm644 "COPYING" "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+
+    # The translations the window looks for at run time.
+    for catalogue in desktop/crates/shell/ui/translations/*/LC_MESSAGES/photo-sync.po; do
+        [ -e "$catalogue" ] || continue
+        language="$(basename "$(dirname "$(dirname "$catalogue")")")"
+        install -d "$pkgdir/usr/share/locale/$language/LC_MESSAGES"
+        msgfmt -o "$pkgdir/usr/share/locale/$language/LC_MESSAGES/photo-sync.mo" "$catalogue"
+    done
+}

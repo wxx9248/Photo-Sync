@@ -5,7 +5,78 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as each milestone goes. M7 is closed.
+Written at the close of milestone M1 and added to as each one went. Every milestone is
+closed. **Section 0 is the list to work through**; the rest is the reasoning behind each item,
+kept in the order it was written.
+
+## 0. Everything waiting on you
+
+One list, gathered from every milestone. The sections after it explain each item where it came
+up. Nothing here is blocked on me; all of it needs a machine, a phone, or a person's eyes.
+
+### Look at it
+
+- [ ] **The desktop window has never been rendered.** No display on the development machine.
+      `cd desktop && cargo run --bin photo-sync`. Worth your eyes: whether the stock
+      `camera-photo` tray icon reads as this application on Plasma; whether the progress line
+      is legible during a real transfer; and the sentence under the vault box, which is the one
+      place the interface has to talk somebody out of an assumption. (§12)
+- [ ] **The phone's screens have never been rendered either**, for the same reason plus the
+      emulator below. (§13)
+- [ ] **Both Simplified Chinese translations were written without a native reader** — the
+      desktop window and the phone's strings. `LANG=zh_CN.UTF-8 cargo run --bin photo-sync`.
+      (§12, §13)
+
+### Run it somewhere this machine cannot
+
+- [ ] **The Android instrumented tests.** They compile and have never executed: the emulator
+      starts here but does not survive its launching command, and Gradle's managed-device
+      snapshot step fails before that. On a machine where an emulator stays up:
+      `cd android && ./gradlew :app:connectedDebugAndroidTest`. Four tests, all about what
+      MediaStore does rather than what this code does with the answer. When they pass,
+      `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13)
+- [ ] **Discovery against a real phone.** The responder is checked against another Rust daemon
+      on this machine; multicast across a home router and `NsdManager`'s reading of the records
+      are what only a real network answers. (§11)
+- [ ] **One real session, end to end.** Desktop and phone, same network, a photograph across
+      and freed. This is M9's exit and the only thing that exercises every piece at once. (§14)
+- [ ] **Throughput.** The real server takes its lock per message rather than per file, which is
+      what makes streaming and concurrent transfers work. Nothing has measured the cost on a
+      real network, and it is the one change whose price is not visible from inside the
+      repository. (§8, §9)
+
+### Decide
+
+- [ ] **§7.4's parenthetical.** It justifies recovery by an inference the desktop does not
+      make, and is safer for not making it. Reword the specification, or leave it. (§9)
+- [ ] **A vault with more than one writer.** Today a file that appears at a reserved name is
+      renamed over and the photograph wins. If a vault might ever sit on a synced folder or a
+      network share, that trade is worth confirming. (§9)
+- [ ] **The SQLite virtual file system.** Outstanding since M2 with three ways forward written
+      out. Nothing since has needed it, and a crash inside SQLite's own writing is still not
+      modelled. (§5)
+- [ ] **Pairing has no deadline.** A window a person opens stays open until a phone pairs or
+      somebody closes it. (§4)
+- [ ] **The F-Droid signing keystore.** Make it, and back it up off the machine, before the
+      first release. Losing it re-identifies every phone in the house. `packaging/fdroid/`
+      says why at length. (§14)
+
+### Confirm once on a real machine
+
+- [ ] **The private key's permissions.** Written owner-only and asserted by a test, but a umask
+      is the sort of thing that differs. (§4)
+- [ ] **The OEM keep-alive steps.** `docs/INSTALL.md` has a table per brand, written from the
+      specification rather than from a phone in hand. Each row is a guess until somebody
+      follows it on that brand. (§14)
+
+### Closed since these were written
+
+- **The JDK.** You chose 25; `DEVELOPMENT.md` says so, both halves target it, and the setup
+  command it documents now works. Kotlin is 2.4.20 and Gradle 9.7.1, both current, with the
+  wrapper checked in.
+- **The pairing code across languages.** `verification/vectors/pairing.tsv` states the six
+  digits for a set of key pairs, computed from the written derivation rather than from either
+  implementation, and both ends answer it. That was the vector M8 owed.
 
 ## 1. Run these once
 
@@ -379,3 +450,64 @@ Worth your eyes in particular:
   committing. It is a store read away.
 * `.po` files ship as source. Compiling them to `.mo` at install time belongs with packaging in
   M9.
+
+## 13. What M8 changed
+
+M8 closed. The phone has a session state machine that plays `SPEC.md` §6 from the handshake to
+the summary, holds no Android type, and is checked by fifteen tests on a plain JVM against a
+fake desktop — a resumed transfer that hashes the photograph it did not send, a catalog frozen
+while the camera keeps working, a phone told to wait for a commit that is still running, and
+the deletion gates.
+
+Around it: MediaStore enumeration narrowed to what §3.2 allows, the deletion request of §8, the
+foreground service that is the floor of §3.3's keep-alive stack, the two taps of §3.4 in
+Compose, both languages, and a gRPC client that pins the desktop's key and presents one the
+Android Keystore will not hand out.
+
+`./verify` runs the phone's tests too, and the traceability matrix reads Kotlin `@Covers`. Half
+the specification is the phone's; leaving it out would have shown those rules unverified for as
+long as the Android half existed.
+
+### Three things that had to be worked out
+
+**The protobuf Gradle plugin does not understand AGP 9.** It reaches for an extension type that
+version no longer has. Both are current and neither is wrong; they simply do not compose yet.
+The wire stubs are generated in a plain JVM module and depended on, which costs nothing.
+
+**AGP 9 compiles Kotlin itself**, so the separate Kotlin plugin the M0 skeleton applied is now
+an error rather than a redundancy.
+
+**The emulator does not survive here.** Gradle's managed device fails creating its snapshot;
+launched by hand the emulator boots and then exits when its launching command does. The
+instrumented tests are written and compile, and they are the item in §0 that needs a machine.
+
+### What is active, and what is not
+
+`R-CATALOG-004`, `R-CATALOG-005` and `R-PAIR-002` are active on the strength of tests that
+actually run. `R-CATALOG-001` and `R-CATALOG-002` have tests that have never executed, so they
+stay deferred: activating them would claim a check that has not happened. `R-SESSION-001`,
+`R-SESSION-003`, `R-DELETE-005` and `R-DELETE-009` need a screen or a device and stay deferred
+with them.
+
+## 14. What M9 changed, and how to release
+
+M9 closed. There is a `packaging/` directory with everything an installation needs.
+
+**The computer.** A PKGBUILD that builds the binary, installs a desktop entry and an icon, and
+compiles the translation catalogues. No service is enabled and nothing runs as root: the
+application needs the graphical session for its tray and its sleep inhibitor, so it is started
+by the session. The release binary builds and the desktop entry validates clean.
+
+**The phones.** An F-Droid repository configuration, metadata, and the procedure in
+`packaging/fdroid/README.md`. The release APK builds unsigned here, which is as far as this can
+go without the keystore — and the keystore is the one thing in this project that must be kept
+forever, because `ANDROID_ID` derives from it and losing it re-identifies every phone in the
+house.
+
+**The instructions.** `docs/INSTALL.md` covers installing both halves, pairing, the first
+session, the per-brand keep-alive steps, and what to do when something is wrong. The brand
+table is written from the specification rather than from a phone in hand, so each row is a
+guess until somebody follows it.
+
+What M9 cannot close from here is its own exit: both halves installing on a clean machine and
+phone, and one real session running end to end. That is the last item in §0.

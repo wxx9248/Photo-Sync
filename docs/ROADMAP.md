@@ -15,7 +15,9 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 through M7 are complete. The work in progress is **M8**.
+Every milestone is complete. What remains is not code: `docs/HANDOFF.md` §0 is the list of
+things that need a machine, a phone, or a person's eyes, and M9's own exit — both halves
+installed and one real session end to end — is the last of them.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -44,6 +46,14 @@ M6 closed with four requirements still deferred, all of them things the phone do
 here can see: `R-SESSION-001` (the Start tap), `R-SESSION-003` (the phone persists nothing about
 transfer progress), `R-PAIR-002` (the phone stores exactly one paired desktop), and
 `R-DELETE-005`/`R-DELETE-009` from M5. They close with M8.
+
+M8 closed with four requirements deferred that need a screen or a device: `R-SESSION-001`,
+`R-SESSION-003`, `R-DELETE-005` and `R-DELETE-009`, plus `R-CATALOG-001` and `R-CATALOG-002`,
+whose instrumented tests are written and have never run — the emulator does not survive on the
+development machine. Activating them needs one run somewhere it does.
+
+M9 closed with its own exit outstanding by nature: it asks for both halves installed on a clean
+machine and phone, which is a person's afternoon rather than a check.
 
 M7 closed with every `R-UI-*` active. What it cannot close from inside this repository is the
 rendering: there is no display on the development machine, so the window has been compiled and

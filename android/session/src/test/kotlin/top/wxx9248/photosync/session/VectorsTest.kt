@@ -15,18 +15,43 @@ import top.wxx9248.photosync.session.verification.Covers
  * is not a failing test on one end; it is the two halves of the protocol having drifted.
  */
 class VectorsTest {
-    private fun vectors(): List<Map<String, String>> {
+    private fun read(name: String): List<Map<String, String>> {
         // The module sits two directories below the repository root.
-        val file = Path.of("..", "..", "verification", "vectors", "deletion.tsv")
+        val file = Path.of("..", "..", "verification", "vectors", name)
         val lines = file.readLines().filterNot { it.startsWith("#") || it.isBlank() }
         val columns = lines.first().split("\t")
         return lines.drop(1).map { line -> columns.zip(line.split("\t")).toMap() }
     }
 
     @Test
+    @Covers("R-PAIR-001")
+    fun `the pairing code is the one both screens have to show`() {
+        val cases = read("pairing.tsv")
+        assertTrue(cases.size >= 4, "the vectors were not read: ${cases.size} cases")
+
+        for (case in cases) {
+            assertEquals(
+                case.getValue("code"),
+                PairingCode.of(
+                    hex(case.getValue("desktop_key")),
+                    hex(case.getValue("phone_key")),
+                ),
+                case.getValue("name"),
+            )
+        }
+    }
+
+    private fun hex(text: String): ByteArray =
+        if (text.isEmpty()) {
+            ByteArray(0)
+        } else {
+            text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        }
+
+    @Test
     @Covers("R-DELETE-006", "R-DELETE-007", "R-DELETE-008")
     fun `every shared case is decided the way it is written down`() {
-        val cases = vectors()
+        val cases = read("deletion.tsv")
         assertTrue(cases.size >= 6, "the vectors were not read: ${cases.size} cases")
 
         for (case in cases) {
