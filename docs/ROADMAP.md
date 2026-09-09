@@ -15,7 +15,11 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 and M1 are complete. The work in progress is **M2**.
+M0, M1 and M2 are complete. The work in progress is **M3**.
+
+M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
+not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
+three ways forward.
 
 ### M0 Foundation
 

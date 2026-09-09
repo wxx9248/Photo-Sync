@@ -82,22 +82,48 @@ out in full and a test anchors the six digits it produces. The Kotlin half has t
 same answer. The conformance vector that would prove it lands in M8; a vector only one
 implementation reads is not yet doing the job vectors exist for.
 
-## 5. Where M2 stands
+## 5. M2 is closed, with one work item outstanding
 
-Its exit criteria are met. `./verify self-test` catches four known-bad desktops and names the
-test that caught each, a 256-seed campaign runs clean in the full tier, and R-RECOVER-001
-through R-RECOVER-004 are active with passing tests. Startup recovery and write-log replay
-landed with them, which `docs/ROADMAP.md` had listed under M4.
+Its exit criteria are met. `./verify self-test` notices five wrong worlds and names the test
+that caught each, a 256-seed campaign runs clean in the full tier, and R-RECOVER-001 through
+R-RECOVER-004 are active with passing tests. Startup recovery and write-log replay landed with
+them, which `docs/ROADMAP.md` had listed under M4. The fault injection of `VERIFICATION.md`
+§L1 is complete but for one entry, noted at the end of this section.
 
-**Two of its work items are not done, so I have not called it closed.** The SQLite virtual
-file system is the larger one: until it exists, a crash treats both databases as intact, which
-is sound for WAL plus `synchronous=FULL` but does not model a crash inside SQLite's own
-writing. The other is the rest of the fault injection `VERIFICATION.md` §L1 lists — a short
-write, `ENOSPC` at an arbitrary point, and above all the silent no-op fsync, which is a
-negative control in its own right: a suite that still passes against a filesystem that only
-pretends to sync is a suite that was never testing durability.
+### The SQLite virtual file system, and why it is not built
 
-Whether that makes M2 closed or not is yours to say.
+`STACK.md` §6 chose `sqlite-vfs` so the manifest and the write-log would crash the way real
+storage crashes. I tried it rather than assuming, and it does not reach as far as the product
+needs.
+
+* The crate registers against `rusqlite` 0.39 and a database opens through it. That much works.
+* Its WAL index, the shared memory SQLite needs for write-ahead logging, lives in a module the
+  crate names `wip`, and the only handle that compiles without implementing it is one that
+  declares WAL unavailable.
+* `STACK.md` §3.5 runs **both** databases in WAL mode. A simulator whose SQLite ran in a
+  different journal mode from production would be testing storage the product never uses,
+  which is most of the reason for doing this at all.
+
+Three ways forward, and the choice is yours.
+
+1. **Leave it.** A crash currently treats both databases as intact. That is sound for WAL plus
+   `synchronous=FULL`: a transaction that returned survived, and one that did not never
+   existed. `VERIFICATION.md` §7 already says SQLite's own correctness is trusted and that the
+   VFS does not verify WAL, so what this would add is narrower than it first appears.
+2. **Implement the WAL index** on top of that `wip` module. The largest of the three, and the
+   part the crate itself calls unfinished.
+3. **Run the simulator's SQLite without WAL**, accepting a journal mode that differs from
+   production, which trades one kind of fidelity for another.
+
+One thing applies whichever you pick: the simulator would need the real `rusqlite` store, which
+lives in the shell today. Sharing it means lifting it into a crate of its own rather than
+having the simulator depend on the product.
+
+### A short write is not modelled
+
+Deliberately. The shell writes with `write_all`, which loops until the bytes are gone or an
+error is returned, so a short count cannot reach the core to be mishandled. Modelling it would
+be modelling something that cannot happen.
 
 ## 6. What M2 has changed so far
 
