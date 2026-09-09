@@ -12,8 +12,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      # protoc builds the wire schema. The rest are what the window needs: fontconfig and
+      # xkbcommon to lay out text and read a keyboard, the X11 and Wayland libraries winit
+      # links against, and GL for the renderer. None of them are used by a test — there is no
+      # display here — but the crate does not build without them.
+      - name: Install what the desktop is built from
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler gettext \
+            libfontconfig-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libegl1-mesa-dev
+
+      # `./verify full` runs the phone's own tests, which are plain JVM tests. Both halves of
+      # the project set `jvmToolchain(25)`, so this is the toolchain Gradle looks for; Gradle
+      # itself comes from the wrapper in the repository.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
 
       - uses: dtolnay/rust-toolchain@stable
         with:

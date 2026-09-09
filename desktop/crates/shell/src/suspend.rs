@@ -58,12 +58,27 @@ pub struct Inhibition {
 }
 
 /// Why the machine could not be asked to stay awake.
+///
+/// The two cases are worth telling apart. A machine with no login manager was never going to
+/// answer and is still a perfectly good machine to sync photographs on; a login manager that
+/// declined is a machine that will sleep in the middle of a transfer, and somebody should
+/// know. A caller that treats them alike is either alarming people for nothing or hiding the
+/// case that matters.
 #[derive(Debug)]
-pub struct SuspendError(String);
+pub enum SuspendError {
+    /// No system bus, or no login manager on it.
+    Unavailable(String),
+
+    /// There is one, and it would not.
+    Refused(String),
+}
 
 impl std::fmt::Display for SuspendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            Self::Unavailable(why) => write!(f, "there is no login manager here: {why}"),
+            Self::Refused(why) => write!(f, "the login manager would not hold off sleeping: {why}"),
+        }
     }
 }
 
@@ -77,7 +92,8 @@ impl std::error::Error for SuspendError {}
 /// # Errors
 /// When there is no system bus, no login manager on it, or it declines.
 pub fn inhibit(why: &str) -> Result<Inhibition, SuspendError> {
-    let connection = zbus::blocking::Connection::system().map_err(problem)?;
+    let connection = zbus::blocking::Connection::system()
+        .map_err(|error| SuspendError::Unavailable(error.to_string()))?;
     let answer = connection
         .call_method(
             Some("org.freedesktop.login1"),
@@ -88,14 +104,27 @@ pub fn inhibit(why: &str) -> Result<Inhibition, SuspendError> {
             // something to be hurried through in the seconds before a suspend.
             &("sleep", "Photo Sync", why, "block"),
         )
-        .map_err(problem)?;
+        .map_err(classify)?;
 
-    let held: zbus::zvariant::OwnedFd = answer.body().deserialize().map_err(problem)?;
+    let held: zbus::zvariant::OwnedFd = answer
+        .body()
+        .deserialize()
+        .map_err(|error| SuspendError::Refused(error.to_string()))?;
     Ok(Inhibition { _held: held.into() })
 }
 
-fn problem(error: impl std::fmt::Display) -> SuspendError {
-    SuspendError(error.to_string())
+/// A bus with nothing listening on that name is a machine without a login manager, which is
+/// a different thing from one that said no.
+fn classify(error: zbus::Error) -> SuspendError {
+    let described = error.to_string();
+    let absent = described.contains("ServiceUnknown")
+        || described.contains("NameHasNoOwner")
+        || described.contains("was not provided by any .service");
+    if absent {
+        SuspendError::Unavailable(described)
+    } else {
+        SuspendError::Refused(described)
+    }
 }
 
 #[cfg(test)]

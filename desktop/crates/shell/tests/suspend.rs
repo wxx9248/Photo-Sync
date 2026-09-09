@@ -12,22 +12,20 @@ use photo_sync_core::covers;
 #[test]
 fn the_login_manager_agrees_to_hold_off_sleeping() {
     covers!("R-UI-002");
-    let taken = suspend::inhibit("moving photographs off a phone");
-
-    // A machine with no system bus has no login manager to ask, and is still a perfectly good
-    // machine to sync photographs on. Anywhere there is one, this has to work: skipping on a
-    // machine that could have answered would be a passing test that checked nothing.
-    if !std::path::Path::new("/run/dbus/system_bus_socket").exists() {
-        println!("no system bus here, so this was not checked");
-        return;
-    }
-
-    match taken {
+    match suspend::inhibit("moving photographs off a phone") {
         // Holding it is the whole mechanism: the promise lasts exactly as long as this value,
         // and dropping it is how logind is told the machine may sleep again.
         Ok(held) => drop(held),
-        Err(error) => {
-            panic!("the login manager was there and would not hold off sleeping: {error}")
+
+        // No login manager here. A build machine is the usual reason, and it is still a
+        // perfectly good machine to sync photographs on. Said out loud, so a run that skipped
+        // this is not mistaken for a run that checked it.
+        Err(suspend::SuspendError::Unavailable(why)) => {
+            println!("not checked here: {why}");
         }
+
+        // There was one and it said no, which is the case worth failing over: that machine
+        // will go to sleep in the middle of a transfer.
+        Err(error) => panic!("{error}"),
     }
 }
