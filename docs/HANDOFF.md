@@ -5,7 +5,7 @@ attention before the next milestone. This is a working note rather than an autho
 here overrides `SPEC.md`, and anything that becomes a rule belongs in the documents
 `AGENTS.md` lists.
 
-Written at the close of milestone M1, and added to as each milestone goes. M6 is closed.
+Written at the close of milestone M1, and added to as each milestone goes. M7 is closed.
 
 ## 1. Run these once
 
@@ -322,3 +322,60 @@ the connection at all — the refusal happens in TLS, before a byte of the proto
   machine needs bridging for that.
 * Nothing calls the responder yet. It is a module with tests and no caller until M7 assembles
   the application.
+
+## 12. What M7 changed, and the part only you can finish
+
+M7 closed. All three `R-UI-*` are active and verified, and there is an application rather than a
+placeholder: settings, a window, a tray item, sleep inhibition, autostart, logging, and both
+languages.
+
+The three requirements are the ones with state behind them, and each is checked where it lives:
+
+* **The vault path is a plain setting.** Changing it leaves the photographs where they were and
+  does not create the new directory behind anyone's back. `R-UI-003`.
+* **Suspend inhibition.** Which phones are busy is bookkeeping — the first to arrive takes the
+  inhibitor, the last to leave releases it. Whether logind will actually hold off sleeping is a
+  question only a real bus can answer, and this machine has one, so the test asks it for real
+  and refuses to skip quietly anywhere a bus exists. `R-UI-002`.
+* **"Commit now"** needed no new code; the event was already in the vocabulary. What it needed
+  was the case it exists for: staging left by a phone that never came back. `R-UI-001`.
+
+The window's contents are decided in plain Rust that runs without a screen — progress, the
+wording of each line, how a byte count reads — so the markup decides only how things look. That
+split is deliberate: the less that lives only in the markup, the less rides on somebody's eyes.
+
+### Please look at the window
+
+**Nobody has seen it.** There is no display on the development machine. It compiles, and the
+application starts and stays running — the smoke run reaches `listening port=…`, writes its
+rolling log, creates the identity and the index, announces itself, and takes a tray slot — but
+what the window *looks like* has never been rendered once.
+
+```sh
+cd desktop && cargo run --bin photo-sync
+```
+
+Worth your eyes in particular:
+
+1. Whether the tray icon (`camera-photo`, a stock name so it follows your theme) reads as this
+   application on Plasma.
+2. Whether the progress line is legible while a phone is actually transferring — the wording is
+   `3 of 4 photographs, 2.0 MB`, and only a real transfer shows whether that updates at a
+   sensible pace.
+3. The sentence under the vault box: "Changing this moves nothing. Move the photographs yourself
+   if you want them moved." That is the one place the interface has to talk somebody out of an
+   assumption, and it is worth reading aloud.
+4. The Simplified Chinese. Every string is translated and a test insists the catalogue and the
+   markup describe the same window, but the translations were written without a native reader.
+   `LANG=zh_CN.UTF-8 cargo run --bin photo-sync`.
+
+### Not built, and deliberately so
+
+* **Pairing from the window.** The pairing code has a place in the markup and nothing drives it:
+  the pairing window is opened programmatically today, and a person-facing "pair a new phone"
+  flow needs a decision about how it is started that nobody has made.
+* **Staged sessions are listed empty.** The "Commit now" button and the event behind it work and
+  are tested; what does not exist is the query that lists which devices have staging worth
+  committing. It is a store read away.
+* `.po` files ship as source. Compiling them to `.mo` at install time belongs with packaging in
+  M9.

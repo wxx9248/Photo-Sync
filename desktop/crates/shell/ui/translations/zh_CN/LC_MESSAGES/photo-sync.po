@@ -1,0 +1,54 @@
+# Simplified Chinese for the desktop window. SPEC.md §3 asks for both languages on
+# both ends: the same family operates the phone and the computer.
+# Photo Sync: every string a person reads in the desktop window.
+# Extracted from ui/app.slint. English is the source language, so it has no catalogue of
+# its own; the strings in the markup are what an English reader sees.
+msgid ""
+msgstr ""
+"Project-Id-Version: photo-sync\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: 2026-09-09 00:00+0000\n"
+"Last-Translator: Photo Sync\n"
+"Language-Team: Photo Sync\n"
+"Language: zh_CN\n"
+
+msgid "Photo Sync"
+msgstr "照片同步"
+
+msgid "Phones"
+msgstr "手机"
+
+msgid "No phone is connected."
+msgstr "没有连接手机。"
+
+msgid "Forget this phone"
+msgstr "取消配对"
+
+msgid "Waiting to be filed"
+msgstr "等待归档"
+
+msgid "Nothing is waiting."
+msgstr "没有等待中的照片。"
+
+msgid "Commit now"
+msgstr "立即归档"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "Where photographs are kept"
+msgstr "照片存放位置"
+
+msgid "Changing this moves nothing. Move the photographs yourself if you want them moved."
+msgstr "更改此设置不会移动任何文件。如需移动照片，请自行移动。"
+
+msgid "Start when I log in"
+msgstr "登录时自动启动"
+
+msgid "Pairing"
+msgstr "配对"
+
+msgid "Check this code matches the one on the phone:"
+msgstr "请核对此代码与手机上显示的是否一致："

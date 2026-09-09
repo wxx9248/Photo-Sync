@@ -1,0 +1,52 @@
+# Photo Sync: every string a person reads in the desktop window.
+# Extracted from ui/app.slint. English is the source language, so it has no catalogue of
+# its own; the strings in the markup are what an English reader sees.
+msgid ""
+msgstr ""
+"Project-Id-Version: photo-sync\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: 2026-09-09 00:00+0000\n"
+"Last-Translator: Photo Sync\n"
+"Language-Team: Photo Sync\n"
+"Language: \n"
+
+msgid "Photo Sync"
+msgstr ""
+
+msgid "Phones"
+msgstr ""
+
+msgid "No phone is connected."
+msgstr ""
+
+msgid "Forget this phone"
+msgstr ""
+
+msgid "Waiting to be filed"
+msgstr ""
+
+msgid "Nothing is waiting."
+msgstr ""
+
+msgid "Commit now"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Where photographs are kept"
+msgstr ""
+
+msgid "Changing this moves nothing. Move the photographs yourself if you want them moved."
+msgstr ""
+
+msgid "Start when I log in"
+msgstr ""
+
+msgid "Pairing"
+msgstr ""
+
+msgid "Check this code matches the one on the phone:"
+msgstr ""

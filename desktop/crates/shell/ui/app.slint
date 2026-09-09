@@ -1,0 +1,108 @@
+// The window a person actually looks at.
+//
+// SPEC.md §4 lists what belongs here: live progress for each phone, staged sessions with a
+// way to commit them by hand, the vault path as a plain setting, and pairing. Everything
+// shown is handed in from Rust; this file decides only how it looks.
+//
+// Every string a person reads goes through @tr so that a translation is a .po file rather
+// than a fork of this markup.
+
+import { Button, CheckBox, LineEdit, ListView, ProgressIndicator, VerticalBox, HorizontalBox, GroupBox } from "std-widgets.slint";
+
+export struct PhoneRow {
+    name: string,
+    detail: string,
+    progress: float,
+    busy: bool,
+}
+
+export struct StagedRow {
+    device: string,
+    detail: string,
+}
+
+export component AppWindow inherits Window {
+    title: @tr("Photo Sync");
+    preferred-width: 640px;
+    preferred-height: 520px;
+
+    in property <[PhoneRow]> phones;
+    in property <[StagedRow]> staged;
+    in-out property <string> vault;
+    in-out property <bool> autostart;
+    in property <string> pairing-code;
+
+    callback commit-now(string);
+    callback vault-changed(string);
+    callback autostart-changed(bool);
+    callback forget-phone(string);
+
+    VerticalBox {
+        GroupBox {
+            title: @tr("Phones");
+            VerticalBox {
+                if phones.length == 0: Text {
+                    text: @tr("No phone is connected.");
+                    wrap: word-wrap;
+                }
+                for phone in phones: VerticalBox {
+                    HorizontalBox {
+                        Text { text: phone.name; font-weight: 700; }
+                        Text { text: phone.detail; horizontal-alignment: right; }
+                    }
+                    if phone.busy: ProgressIndicator { progress: phone.progress; }
+                    Button {
+                        text: @tr("Forget this phone");
+                        clicked => { root.forget-phone(phone.name); }
+                    }
+                }
+            }
+        }
+
+        GroupBox {
+            title: @tr("Waiting to be filed");
+            VerticalBox {
+                if staged.length == 0: Text {
+                    text: @tr("Nothing is waiting.");
+                }
+                for entry in staged: HorizontalBox {
+                    Text { text: entry.device; }
+                    Text { text: entry.detail; }
+                    Button {
+                        // Rescues photographs left by a phone that never came back.
+                        text: @tr("Commit now");
+                        clicked => { root.commit-now(entry.device); }
+                    }
+                }
+            }
+        }
+
+        GroupBox {
+            title: @tr("Settings");
+            VerticalBox {
+                Text { text: @tr("Where photographs are kept"); }
+                LineEdit {
+                    text <=> root.vault;
+                    edited => { root.vault-changed(self.text); }
+                }
+                Text {
+                    text: @tr("Changing this moves nothing. Move the photographs yourself if you want them moved.");
+                    wrap: word-wrap;
+                }
+                CheckBox {
+                    text: @tr("Start when I log in");
+                    checked <=> root.autostart;
+                    toggled => { root.autostart-changed(self.checked); }
+                }
+            }
+        }
+
+        if pairing-code != "": GroupBox {
+            title: @tr("Pairing");
+            VerticalBox {
+                Text { text: @tr("Check this code matches the one on the phone:"); }
+                Text { text: pairing-code; font-size: 28px; font-weight: 700; }
+            }
+        }
+    }
+}

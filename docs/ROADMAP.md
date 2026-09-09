@@ -15,7 +15,7 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-M0 through M6 are complete. The work in progress is **M7**.
+M0 through M7 are complete. The work in progress is **M8**.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -45,8 +45,10 @@ here can see: `R-SESSION-001` (the Start tap), `R-SESSION-003` (the phone persis
 transfer progress), `R-PAIR-002` (the phone stores exactly one paired desktop), and
 `R-DELETE-005`/`R-DELETE-009` from M5. They close with M8.
 
-Discovery is built and tested against a real multicast round trip, but nothing calls it yet:
-`main.rs` is still a placeholder, and assembling the application is M7.
+M7 closed with every `R-UI-*` active. What it cannot close from inside this repository is the
+rendering: there is no display on the development machine, so the window has been compiled and
+its contents decided in testable Rust, but nobody has looked at it. `docs/HANDOFF.md` §12 says
+what to look at and how to run it.
 
 ### M0 Foundation
 

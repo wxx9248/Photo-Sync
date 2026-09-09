@@ -12,9 +12,11 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
 use photo_sync_core::Desktop;
-use photo_sync_core::effect::Effect;
+use photo_sync_core::effect::{Effect, LogLevel};
 use photo_sync_core::event::{Event, StorageOutcome};
 use photo_sync_core::port::StorageError;
+
+use crate::views::Views;
 
 use crate::clock;
 use crate::storage::Storage;
@@ -27,6 +29,10 @@ pub struct Desk {
     store: Store,
     vault: PathBuf,
     log: Vec<Effect>,
+
+    /// What the window would show. Kept here because this is the one place every effect
+    /// passes through, so nothing can happen that the window never hears about.
+    views: Views,
 }
 
 impl Desk {
@@ -42,6 +48,7 @@ impl Desk {
             store,
             vault: vault.to_path_buf(),
             log: Vec::new(),
+            views: Views::new(),
         };
         let started = clock::now();
         desk.deliver(Event::Started { now: started.at });
@@ -49,6 +56,12 @@ impl Desk {
     }
 
     /// Delivers one event and performs everything it leads to.
+    /// What the window should be showing now.
+    #[must_use]
+    pub fn views(&self) -> &Views {
+        &self.views
+    }
+
     pub fn deliver(&mut self, event: Event) {
         let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
         while let Some(effect) = queue.pop_front() {
@@ -159,16 +172,29 @@ impl Desk {
                 op: *op,
                 moment: clock::now(),
             }),
-            // Timers, messages to a phone, logging, and the interface are the server's and
-            // the window's business. The loop records them and moves on.
+            // What the core wanted said, said. `STACK.md` §3.9 wants the commit and
+            // recovery paths readable from the logs alone after the fact, and the core
+            // decides what is worth saying — it cannot write it down itself.
+            Effect::NotifyUi { update } => {
+                self.views.observe(update);
+                None
+            }
+            Effect::Log { level, message } => {
+                match level {
+                    LogLevel::Error => tracing::error!(target: "photo_sync::core", "{message}"),
+                    LogLevel::Warn => tracing::warn!(target: "photo_sync::core", "{message}"),
+                    LogLevel::Info => tracing::info!(target: "photo_sync::core", "{message}"),
+                }
+                None
+            }
+            // Timers, messages to a phone, and the interface are the server's and the
+            // window's business. The loop records them and moves on.
             Effect::SetTimer { .. }
             | Effect::SendDiff { .. }
             | Effect::SendUploadResult { .. }
             | Effect::SendCandidates { .. }
             | Effect::SendSessionSummary { .. }
-            | Effect::RejectSession { .. }
-            | Effect::Log { .. }
-            | Effect::NotifyUi { .. } => None,
+            | Effect::RejectSession { .. } => None,
         }
     }
 }

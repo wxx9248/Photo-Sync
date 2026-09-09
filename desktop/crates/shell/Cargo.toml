@@ -24,9 +24,17 @@ rusqlite.workspace = true
 rustix.workspace = true
 mdns-sd = "0.21"
 zbus = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+slint = { version = "1.17", default-features = false, features = ["compat-1-2", "backend-winit", "renderer-femtovg", "std", "gettext"] }
+ksni = { version = "0.3", features = ["blocking"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 photo-sync-sim.workspace = true
+
+[build-dependencies]
+slint-build = "1.17"
