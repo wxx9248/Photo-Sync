@@ -82,7 +82,24 @@ out in full and a test anchors the six digits it produces. The Kotlin half has t
 same answer. The conformance vector that would prove it lands in M8; a vector only one
 implementation reads is not yet doing the job vectors exist for.
 
-## 5. What M2 has changed so far
+## 5. Where M2 stands
+
+Its exit criteria are met. `./verify self-test` catches four known-bad desktops and names the
+test that caught each, a 256-seed campaign runs clean in the full tier, and R-RECOVER-001
+through R-RECOVER-004 are active with passing tests. Startup recovery and write-log replay
+landed with them, which `docs/ROADMAP.md` had listed under M4.
+
+**Two of its work items are not done, so I have not called it closed.** The SQLite virtual
+file system is the larger one: until it exists, a crash treats both databases as intact, which
+is sound for WAL plus `synchronous=FULL` but does not model a crash inside SQLite's own
+writing. The other is the rest of the fault injection `VERIFICATION.md` §L1 lists — a short
+write, `ENOSPC` at an arbitrary point, and above all the silent no-op fsync, which is a
+negative control in its own right: a suite that still passes against a filesystem that only
+pretends to sync is a suite that was never testing durability.
+
+Whether that makes M2 closed or not is yours to say.
+
+## 6. What M2 has changed so far
 
 The simulated filesystem now loses what a real one loses: a file's bytes become durable when
 that file is synced, a name when its directory is synced, and a crash keeps nothing else. A
@@ -112,7 +129,7 @@ and treats both databases as intact. `STACK.md` §3.5 runs them in WAL mode with
 existed; what this does not yet model is a crash inside SQLite's own writing. That is what the
 virtual file system M2 also calls for is for, and it is not built.
 
-## 6. Known gaps, deliberately left
+## 7. Known gaps, deliberately left
 
 These are noted where the code makes them, not just here.
 
