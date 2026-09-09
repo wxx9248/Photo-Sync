@@ -22,6 +22,7 @@ x509-parser.workspace = true
 refinery.workspace = true
 rusqlite.workspace = true
 rustix.workspace = true
+mdns-sd = "0.21"
 
 [lints]
 workspace = true
