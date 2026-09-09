@@ -6,8 +6,8 @@
 //! it performs in the order they were emitted. That ordering is the contract the durability
 //! rules of §7 rest on, so a driver may not reorder them.
 //!
-//! Commit, deletion nomination, and startup recovery are not built yet. The desktop says so
-//! when a phone asks for them rather than reporting a session it did not finish.
+//! Commit, deletion nomination, and startup recovery all live here now. What is still
+//! missing is named at the point it is missing rather than listed up here.
 
 mod commit;
 pub(crate) mod deletion;
@@ -30,6 +30,11 @@ use crate::store::{StagingEntry, StoreError, StoreRequest, StoreResponse};
 /// the watermark on. `STACK.md` §3.4 fixes the interval at 16 MiB.
 const SYNC_INTERVAL_BYTES: u64 = 16 * 1024 * 1024;
 
+/// How much of a partial is read back at a time when its digest is being rebuilt. Large
+/// enough that a gigabyte is a few thousand reads, small enough that no single one is a
+/// problem to hold.
+const REBUILD_CHUNK_BYTES: u64 = 1024 * 1024;
+
 /// A hash mismatch buys one full re-transfer. `SPEC.md` §6.5 skips the file after that.
 const MAX_ATTEMPTS: u32 = 2;
 
@@ -40,12 +45,19 @@ pub struct Desktop {
     ///
     /// This is what makes a resumed transfer verifiable end to end. It outlives the session,
     /// because a phone that reconnects resumes a partial the previous connection began. It
-    /// does not outlive the process, so after a restart the desktop cannot continue a digest
-    /// and starts those files again. `SPEC.md` §7.6 allows that: resume is an optimization,
-    /// and replaying the prefix through the digest arrives with milestone M3.
+    /// does not outlive the process: after a restart the digest is rebuilt by reading the
+    /// prefix back off the disk, which is what `SPEC.md` §7.6 asks for and what
+    /// [`Desktop::prefixes_to_rebuild`] arranges before any diff is answered.
     durable_digests: BTreeMap<FileId, RunningDigest>,
 
     pending: BTreeMap<OpId, Pending>,
+
+    /// Digests being rebuilt from partials on disk, until they are whole enough to continue.
+    rebuilding: BTreeMap<FileId, RunningDigest>,
+
+    /// Partials whose prefix could not be read back. Asking again would only fail again, and
+    /// a diff that kept asking would never answer.
+    unreadable: BTreeSet<FileId>,
 
     /// Absent until the manifest has been asked for its highest identifier at startup.
     files: Option<FileIds>,
@@ -89,6 +101,14 @@ enum Pending {
     },
     RecoverPlan {
         device: DeviceId,
+    },
+
+    /// One read of a partial being hashed back into a digest the desktop can continue.
+    RebuildDigest {
+        device: DeviceId,
+        file: FileId,
+        read_to: u64,
+        prefix: u64,
     },
     TruncatePartial {
         file: FileId,
@@ -207,6 +227,8 @@ impl Desktop {
         Self {
             sessions: BTreeMap::new(),
             durable_digests: BTreeMap::new(),
+            rebuilding: BTreeMap::new(),
+            unreadable: BTreeSet::new(),
             pending: BTreeMap::new(),
             files: None,
             awaiting_ids: BTreeSet::new(),
@@ -492,8 +514,21 @@ impl Desktop {
 
     /// Classifies the catalog once both store answers and the identifier seed are in hand.
     fn try_classify(&mut self, device: &DeviceId) -> Vec<Effect> {
-        let Some(files) = self.files.as_mut() else {
+        if self.files.is_none() {
             self.awaiting_ids.insert(device.clone());
+            return Vec::new();
+        }
+
+        // A partial is worth resuming only if the desktop can carry on its digest, and after
+        // a restart it holds none. SPEC.md §7.6 replays the existing prefix through the
+        // sha256 state, so that happens before the phone is told what to send: by the time it
+        // hears an offset, the digest that will check the whole file is ready.
+        let rebuilds = self.prefixes_to_rebuild(device);
+        if !rebuilds.is_empty() {
+            return self.rebuild_prefixes(device, &rebuilds);
+        }
+
+        let Some(files) = self.files.as_mut() else {
             return Vec::new();
         };
         let Some(session) = self.sessions.get_mut(device) else {
@@ -523,6 +558,121 @@ impl Desktop {
             device: device.clone(),
         });
         effects.push(Effect::MeasureFreeSpace { op });
+        effects
+    }
+
+    /// Partials this session may want to resume whose digest the desktop no longer holds.
+    ///
+    /// A digest that stops short of the watermark is no use: the check of §7.6 covers the
+    /// prefix as well as what arrives, so a prefix nobody hashed cannot be trusted by leaving
+    /// it out of the sum.
+    fn prefixes_to_rebuild(&self, device: &DeviceId) -> Vec<(FileId, u64)> {
+        let Some(session) = self.sessions.get(device) else {
+            return Vec::new();
+        };
+        let (Phase::Classifying(inputs) | Phase::RebuildingDigests(inputs)) = &session.phase else {
+            return Vec::new();
+        };
+        let (Some(staged), Some(_)) = (&inputs.staged, &inputs.imported) else {
+            return Vec::new();
+        };
+
+        staged
+            .iter()
+            .filter(|entry| !entry.is_verified() && entry.durable_bytes > 0)
+            // Only a partial the phone still holds the same version of is worth reading back.
+            // One whose photograph has changed is superseded whatever its digest says.
+            .filter(|entry| {
+                session.catalog.entries().iter().any(|wanted| {
+                    wanted.path == entry.path
+                        && wanted.size == entry.size
+                        && wanted.mtime == entry.mtime
+                })
+            })
+            .filter(|entry| {
+                !self
+                    .durable_digests
+                    .get(&entry.file)
+                    .is_some_and(|digest| digest.bytes() == entry.durable_bytes)
+            })
+            // Already being read; its next chunk is asked for.
+            .filter(|entry| !self.rebuilding.contains_key(&entry.file))
+            .filter(|entry| !self.unreadable.contains(&entry.file))
+            .map(|entry| (entry.file, entry.durable_bytes))
+            .collect()
+    }
+
+    /// Starts reading each of those partials back, a chunk at a time.
+    fn rebuild_prefixes(&mut self, device: &DeviceId, files: &[(FileId, u64)]) -> Vec<Effect> {
+        if let Some(session) = self.sessions.get_mut(device) {
+            session.begin_rebuilding();
+        }
+
+        files
+            .iter()
+            .map(|(file, prefix)| {
+                self.rebuilding.insert(*file, RunningDigest::new());
+                self.read_more_of(device, *file, 0, *prefix)
+            })
+            .collect()
+    }
+
+    /// Asks for the next chunk of a partial being read back.
+    fn read_more_of(&mut self, device: &DeviceId, file: FileId, from: u64, prefix: u64) -> Effect {
+        let length = REBUILD_CHUNK_BYTES.min(prefix.saturating_sub(from));
+        let op = self.begin(Pending::RebuildDigest {
+            device: device.clone(),
+            file,
+            read_to: from + length,
+            prefix,
+        });
+        Effect::ReadStagedRange {
+            op,
+            file,
+            offset: from,
+            length,
+        }
+    }
+
+    /// Takes one chunk of a partial into the digest being rebuilt for it.
+    fn prefix_read(
+        &mut self,
+        device: &DeviceId,
+        file: FileId,
+        read_to: u64,
+        prefix: u64,
+        bytes: &[u8],
+    ) -> Vec<Effect> {
+        let Some(digest) = self.rebuilding.get_mut(&file) else {
+            return Vec::new();
+        };
+        digest.update(bytes);
+
+        if digest.bytes() < prefix && !bytes.is_empty() {
+            return vec![self.read_more_of(device, file, read_to, prefix)];
+        }
+
+        // A file that gave back fewer bytes than the manifest promised is not the prefix the
+        // watermark describes, so nothing is carried forward and it starts again.
+        match self.rebuilding.remove(&file) {
+            Some(rebuilt) if rebuilt.bytes() == prefix => {
+                self.durable_digests.insert(file, rebuilt);
+            }
+            _ => {
+                self.unreadable.insert(file);
+            }
+        }
+        self.try_classify(device)
+    }
+
+    /// A partial that could not be read back is one nothing will resume from.
+    fn prefix_unreadable(&mut self, device: &DeviceId, file: FileId) -> Vec<Effect> {
+        self.rebuilding.remove(&file);
+        self.unreadable.insert(file);
+        let mut effects = vec![warn(format!(
+            "{file:?} could not be read back, so it starts again"
+        ))];
+        effects.extend(self.try_classify(device));
         effects
     }
 
@@ -1118,6 +1268,17 @@ impl Desktop {
                     "{file:?} was cut back to its watermark of {length}"
                 ))]
             }
+            Pending::RebuildDigest {
+                device,
+                file,
+                read_to,
+                prefix,
+            } => {
+                let StorageOutcome::Bytes(bytes) = outcome else {
+                    return self.prefix_unreadable(&device, file);
+                };
+                self.prefix_read(&device, file, read_to, prefix, &bytes)
+            }
             Pending::SyncFile(sync) => self.file_synced(sync),
             Pending::RemoveSuperseded { .. } | Pending::RemoveMismatched { .. } => Vec::new(),
             Pending::FinalizeFile {
@@ -1186,6 +1347,7 @@ impl Desktop {
                     "the staged file for {file:?} was not removed: {error}"
                 ))]
             }
+            Pending::RebuildDigest { device, file, .. } => self.prefix_unreadable(&device, file),
             Pending::TruncatePartial { file, length } => {
                 // A partial that cannot be cut back is a partial nothing will resume from:
                 // the next commit drops a manifest row whose file is missing, and a diff
@@ -1305,6 +1467,7 @@ impl Desktop {
             | Pending::ReadNameSources { .. }
             | Pending::NominationStat { .. }
             | Pending::TruncatePartial { .. }
+            | Pending::RebuildDigest { .. }
             | Pending::FreeSpace { .. }) => {
                 vec![warn(format!("{other:?} was answered by the store"))]
             }
@@ -1334,6 +1497,7 @@ impl Desktop {
             | Pending::ReadNameSources { .. }
             | Pending::NominationStat { .. }
             | Pending::TruncatePartial { .. }
+            | Pending::RebuildDigest { .. }
             | Pending::FreeSpace { .. }
             | Pending::SeedFileIds
             | Pending::ListStaging { .. }
@@ -1355,6 +1519,7 @@ fn describe(phase: &Phase) -> &'static str {
         Phase::AwaitingCatalog => "waiting for its catalog",
         Phase::CatalogFrozen => "holding a frozen catalog",
         Phase::Classifying(_) => "being classified",
+        Phase::RebuildingDigests(_) => "reading its partials back",
         Phase::MeasuringSpace => "waiting on the free-space check",
         Phase::Transferring => "transferring",
         Phase::Nominating => "looking for its vault copies",

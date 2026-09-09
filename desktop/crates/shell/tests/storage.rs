@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use photo_sync::storage::Storage;
+use photo_sync_core::covers;
 use photo_sync_core::effect::Directory;
 use photo_sync_core::id::{DeviceId, FileId, VaultName};
 use photo_sync_core::port::StorageError;
@@ -73,6 +74,7 @@ fn expect(result: Result<(), StorageError>) {
 
 #[test]
 fn staging_sits_inside_the_vault_so_a_commit_is_a_rename() {
+    covers!("R-STAGE-010");
     let scratch = Scratch::new();
     let mut storage = storage(&scratch);
 

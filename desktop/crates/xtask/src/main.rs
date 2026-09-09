@@ -73,6 +73,12 @@ fn run(command: Command) -> Result<bool, String> {
 }
 
 fn report_scenario(outcome: &scenario::Outcome) {
+    // A scenario that could not be arranged here has not passed anything, and saying "passed"
+    // about it would be the report claiming a check that never ran.
+    if let Some(why) = &outcome.skipped {
+        println!("{}: not checked here — {why}", outcome.id);
+        return;
+    }
     if outcome.passed() {
         println!("{}: passed — {}", outcome.id, outcome.description);
         return;

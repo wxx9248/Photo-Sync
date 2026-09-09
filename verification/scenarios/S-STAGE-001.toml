@@ -1,0 +1,31 @@
+id          = "S-STAGE-001"
+covers      = ["R-STAGE-009", "R-STAGE-008", "R-DIFF-003"]
+description = "A transfer the power cut short is carried on from the desktop's watermark, not started again"
+
+[[phone.library]]
+path          = "DCIM/Camera/IMG_0001.jpg"
+size          = 2400
+mtime         = 1756000000
+content       = "alpha"
+
+# Part of the photograph gets across and the connection dies.
+[[events]]
+kind        = "interrupt_transfer"
+after_bytes = 1000
+
+# The machine loses power, so whatever digest it was building is gone. What survives is the
+# part of the file that reached the disk, and the watermark saying how much of it to trust.
+[[events]]
+kind = "restart"
+
+# The next session asks for the rest, and the phone's digest still covers the whole
+# photograph, so only a desktop that replayed the prefix can agree with it.
+[[events]]
+kind = "run_session"
+
+[expect]
+uploaded            = ["DCIM/Camera/IMG_0001.jpg"]
+vault               = ["2025-08-24_014640.jpg"]
+deletion_candidates = ["DCIM/Camera/IMG_0001.jpg"]
+phone_deleted       = ["DCIM/Camera/IMG_0001.jpg"]
+phone_kept          = []

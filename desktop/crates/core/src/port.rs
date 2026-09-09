@@ -59,6 +59,14 @@ pub trait FileOps {
 
     /// Whether a staged file is still where the manifest says it is.
     fn stat_staging_file(&self, file: FileId) -> Result<bool, StorageError>;
+
+    /// Reads part of a staged file back, for rebuilding a partial's digest.
+    fn read_staged_range(
+        &self,
+        file: FileId,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, StorageError>;
 }
 
 pub trait Store {

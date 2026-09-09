@@ -48,6 +48,19 @@ pub enum Effect {
         op: OpId,
     },
 
+    /// Reads part of a staged file back.
+    ///
+    /// Used to rebuild the digest of a partial the desktop no longer holds in memory, which
+    /// `SPEC.md` §7.6 calls replaying the existing prefix through the sha256 state. Nothing
+    /// else reads a staged file: a transfer is verified against the bytes that arrived, not
+    /// against what came back off the disk.
+    ReadStagedRange {
+        op: OpId,
+        file: FileId,
+        offset: u64,
+        length: u64,
+    },
+
     /// Checks that a staged file is still there. `SPEC.md` §7.3 drops a manifest entry
     /// without one rather than sealing a rename that could never happen.
     StatStagingFile {

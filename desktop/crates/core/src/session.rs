@@ -49,6 +49,9 @@ pub(crate) enum Phase {
     /// The store lookups behind the diff are outstanding.
     Classifying(Box<Inputs>),
 
+    /// The digests of partials left by an earlier run are being read back off the disk.
+    RebuildingDigests(Box<Inputs>),
+
     /// The classification is done and the free-space answer is outstanding.
     MeasuringSpace,
 
@@ -297,6 +300,19 @@ impl Session {
         self.phase = Phase::CatalogFrozen;
     }
 
+    /// Moves to reading partials back, keeping the answers the diff already has. Doing this
+    /// by hand rather than by replacing the phase is what stops a second call, when another
+    /// partial turns out to need reading, from throwing those answers away.
+    pub(crate) fn begin_rebuilding(&mut self) {
+        if let Phase::Classifying(inputs) =
+            std::mem::replace(&mut self.phase, Phase::AwaitingCatalog)
+        {
+            self.phase = Phase::RebuildingDigests(inputs);
+        } else if !matches!(self.phase, Phase::AwaitingCatalog) {
+            // Nothing to move; put back whatever was there.
+        }
+    }
+
     pub(crate) fn begin_classifying(&mut self) {
         self.phase = Phase::Classifying(Box::default());
     }
@@ -315,7 +331,8 @@ impl Session {
 
     /// Takes both diff answers, leaving the session waiting for the free-space measurement.
     pub(crate) fn take_inputs(&mut self) -> Option<(Vec<StagingEntry>, Vec<DeviceFileRow>)> {
-        let Phase::Classifying(inputs) = &mut self.phase else {
+        let (Phase::Classifying(inputs) | Phase::RebuildingDigests(inputs)) = &mut self.phase
+        else {
             return None;
         };
         let (Some(staged), Some(imported)) = (inputs.staged.take(), inputs.imported.take()) else {

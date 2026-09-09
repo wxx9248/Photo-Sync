@@ -31,6 +31,10 @@ pub struct Faults {
     pub refuse_name_sources: bool,
     pub refuse_store: bool,
 
+    /// A staged file that cannot be read back, which is what a bad sector under a partial
+    /// looks like to the desktop.
+    pub refuse_staged_reads: bool,
+
     /// Answers every staging stat only once nothing else is outstanding.
     pub answer_stats_last: bool,
 
@@ -369,6 +373,22 @@ impl Simulation {
                 self.storage.clear_staging(device);
                 Some(done(*op))
             }
+            Effect::ReadStagedRange {
+                op,
+                file,
+                offset,
+                length,
+            } => {
+                if self.faults.refuse_staged_reads {
+                    return Some(failed(*op, StorageError::Failed("unreadable".into())));
+                }
+                Some(Event::StorageOpCompleted {
+                    op: *op,
+                    result: Ok(StorageOutcome::Bytes(
+                        self.storage.read_range(*file, *offset, *length),
+                    )),
+                })
+            }
             Effect::StatStagingFile { op, file } => Some(Event::StorageOpCompleted {
                 op: *op,
                 result: Ok(StorageOutcome::StagingFile {
@@ -460,6 +480,11 @@ impl crate::phone::Driver for Simulation {
 
     fn take_log(&mut self) -> Vec<Effect> {
         Simulation::take_log(self)
+    }
+
+    fn power_cycle(&mut self) -> bool {
+        Simulation::restart(self);
+        true
     }
 }
 

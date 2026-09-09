@@ -21,6 +21,16 @@ use photo_sync_core::{CatalogEntry, RunningDigest};
 pub trait Driver {
     fn deliver(&mut self, event: Event);
     fn take_log(&mut self) -> Vec<Effect>;
+
+    /// Takes the power away and brings the desktop back, saying whether it could.
+    ///
+    /// A simulated desktop can be stopped between any two effects, which is the only way to
+    /// arrange a machine that lost power holding part of a file. A real one under test is
+    /// shut down politely or not at all, so it answers no and whoever asked says where the
+    /// case was checked instead of quietly checking something weaker.
+    fn power_cycle(&mut self) -> bool {
+        false
+    }
 }
 
 /// How much of a file travels in one message. `STACK.md` §5.3 fixes it at 512 KB.
@@ -108,6 +118,69 @@ impl Phone {
     /// what happens to the commit.
     pub fn run_session_until_commit<D: Driver>(&mut self, sim: &mut D) -> SessionOutcome {
         self.transfer(sim, false)
+    }
+
+    /// Sends the first `bytes` of the first file the desktop asked for and then drops the
+    /// connection, which is what the desktop sees when a phone goes out of range or a
+    /// machine loses power part-way through a photograph. `SPEC.md` §7.6.
+    pub fn send_partly<D: Driver>(&mut self, sim: &mut D, bytes: u64) -> SessionOutcome {
+        let mut outcome = SessionOutcome::default();
+
+        sim.deliver(Event::PeerConnected {
+            device: self.device.clone(),
+            name: self.name.clone(),
+        });
+        if let Some(reason) = refusal(&sim.take_log()) {
+            outcome.rejected = Some(reason);
+            return outcome;
+        }
+
+        let catalog = self.catalog();
+        let total_bytes = catalog.iter().map(|entry| entry.size).sum();
+        sim.deliver(Event::CatalogSubmitted {
+            device: self.device.clone(),
+            entries: catalog,
+            total_bytes,
+        });
+        sim.deliver(Event::DiffRequested {
+            device: self.device.clone(),
+        });
+
+        let answered = sim.take_log();
+        if let Some(reason) = refusal(&answered) {
+            outcome.rejected = Some(reason);
+            return outcome;
+        }
+
+        if let Some(wanted) = to_send(&answered).first()
+            && let Some(file) = self.files.get(&wanted.path)
+        {
+            let from = usize::try_from(wanted.resume_offset).unwrap_or(usize::MAX);
+            let to = from
+                .saturating_add(usize::try_from(bytes).unwrap_or(usize::MAX))
+                .min(file.content.len());
+            sim.deliver(Event::UploadOpened {
+                device: self.device.clone(),
+                file: wanted.file,
+                path: wanted.path.clone(),
+                offset: wanted.resume_offset,
+            });
+            if from < to {
+                sim.deliver(Event::ChunkArrived {
+                    device: self.device.clone(),
+                    file: wanted.file,
+                    offset: wanted.resume_offset,
+                    data: file.content[from..to].to_vec(),
+                });
+            }
+            outcome.uploaded.push(wanted.path.clone());
+        }
+
+        sim.deliver(Event::PeerDisconnected {
+            device: self.device.clone(),
+        });
+        sim.take_log();
+        outcome
     }
 
     /// Runs one session from the handshake to the summary.

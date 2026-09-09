@@ -47,6 +47,11 @@ fn digest_of(bytes: &[u8]) -> Sha256 {
 
 /// Connects a phone and hands over a catalog of one photo, returning what it is asked for.
 fn offer(sim: &mut Simulation) -> FileId {
+    offered(sim).0
+}
+
+/// The same, and the offset the desktop said to carry on from.
+fn offered(sim: &mut Simulation) -> (FileId, u64) {
     sim.deliver(Event::PeerConnected {
         device: phone(),
         name: "Kitchen phone".to_string(),
@@ -66,7 +71,7 @@ fn offer(sim: &mut Simulation) -> FileId {
         if let photo_sync_core::Effect::SendDiff { to_send, .. } = effect
             && let Some(first) = to_send.first()
         {
-            return first.file;
+            return (first.file, first.resume_offset);
         }
     }
     panic!("the desktop asked for nothing");
@@ -441,4 +446,299 @@ fn agreed(sim: &Simulation) {
             differences.join("; ")
         );
     }
+}
+
+#[test]
+fn a_transfer_the_power_interrupted_carries_on_from_the_watermark() {
+    covers!("R-STAGE-009", "R-STAGE-008", "R-DIFF-003");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    let (head, tail) = PHOTO.split_at(10);
+
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: 0,
+        data: head.to_vec(),
+    });
+    // A dropped connection makes the bytes so far durable and finalises the watermark.
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+
+    sim.restart();
+    agreed(&sim);
+
+    // The desktop no longer holds the digest it was building, so it reads the prefix back off
+    // its own disk before it says where to carry on from. SPEC.md §7.6.
+    let (resumed, offered) = offered(&mut sim);
+    assert_eq!(resumed, file, "a new file was started instead of resuming");
+    assert_eq!(offered, head.len() as u64);
+
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: offered,
+    });
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: offered,
+        data: tail.to_vec(),
+    });
+    // The digest covers the whole photograph, prefix included, so only a desktop that really
+    // replayed those first bytes can agree with what the phone states.
+    sim.deliver(Event::UploadClosed {
+        device: phone(),
+        file,
+        digest: digest_of(PHOTO),
+    });
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    assert_eq!(sim.storage.vault().len(), 1);
+    assert_eq!(
+        sim.storage.vault().values().next(),
+        Some(&PHOTO.to_vec()),
+        "the vault copy is not the photograph"
+    );
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_that_cannot_be_read_back_starts_again() {
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: 0,
+        data: PHOTO[..10].to_vec(),
+    });
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+    sim.restart();
+
+    // The file is gone from under the manifest row that describes it.
+    sim.storage.remove(file);
+    let (asked, offered) = offered(&mut sim);
+
+    assert_eq!(offered, 0, "a prefix nothing could read was trusted anyway");
+    assert_ne!(asked, file);
+}
+
+/// Connects a phone with a catalog of the caller's choosing and hands back what the desktop
+/// answered, so a test can look at what it decided to read as well as what it asked for.
+fn answered_for(sim: &mut Simulation, entries: Vec<CatalogEntry>) -> Vec<photo_sync_core::Effect> {
+    let total_bytes = entries.iter().map(|entry| entry.size).sum();
+    sim.deliver(Event::PeerConnected {
+        device: phone(),
+        name: "Kitchen phone".to_string(),
+    });
+    sim.deliver(Event::CatalogSubmitted {
+        device: phone(),
+        entries,
+        total_bytes,
+    });
+    sim.deliver(Event::DiffRequested { device: phone() });
+    sim.take_log()
+}
+
+/// The one catalog entry the rest of these tests use.
+fn only_photo() -> CatalogEntry {
+    CatalogEntry {
+        path: photo_path(),
+        size: PHOTO.len() as u64,
+        mtime: Timestamp(MTIME),
+    }
+}
+
+fn reads_in(effects: &[photo_sync_core::Effect]) -> usize {
+    effects
+        .iter()
+        .filter(|effect| matches!(effect, photo_sync_core::Effect::ReadStagedRange { .. }))
+        .count()
+}
+
+fn resume_offset_in(effects: &[photo_sync_core::Effect]) -> Option<u64> {
+    effects.iter().find_map(|effect| match effect {
+        photo_sync_core::Effect::SendDiff { to_send, .. } => {
+            to_send.first().map(|first| first.resume_offset)
+        }
+        _ => None,
+    })
+}
+
+/// Gets part of one photograph across and makes it durable, then takes the machine away.
+fn interrupted(sim: &mut Simulation, keep: usize) -> FileId {
+    let file = offer(sim);
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: 0,
+        data: PHOTO[..keep].to_vec(),
+    });
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+    sim.restart();
+    file
+}
+
+#[test]
+fn a_photo_already_verified_is_never_read_back_again() {
+    covers!("R-STAGE-009");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+    sim.restart();
+
+    // Its digest was checked before it was called verified, and that verdict was written
+    // down. Reading the whole photograph again would be asking a settled question.
+    let answered = answered_for(&mut sim, vec![only_photo()]);
+    assert_eq!(reads_in(&answered), 0, "a verified file was read back");
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_with_nothing_durable_is_not_read_back() {
+    covers!("R-STAGE-009");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    // The row exists and no byte of the photograph ever reached the disk.
+    sim.restart();
+
+    let answered = answered_for(&mut sim, vec![only_photo()]);
+    assert_eq!(reads_in(&answered), 0, "an empty partial was read back");
+    assert_eq!(resume_offset_in(&answered), Some(0));
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_whose_photograph_grew_is_not_read_back() {
+    covers!("R-STAGE-009", "R-DIFF-004");
+    let mut sim = desktop();
+    interrupted(&mut sim, 10);
+
+    // The phone edited the photograph, so what is on the disk is part of a file nobody is
+    // sending any more. Its digest is worth nothing whatever it comes to.
+    let answered = answered_for(
+        &mut sim,
+        vec![CatalogEntry {
+            size: PHOTO.len() as u64 + 5,
+            ..only_photo()
+        }],
+    );
+    assert_eq!(reads_in(&answered), 0, "a superseded partial was read back");
+    assert_eq!(resume_offset_in(&answered), Some(0));
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_whose_photograph_was_touched_is_not_read_back() {
+    covers!("R-STAGE-009", "R-DIFF-004");
+    let mut sim = desktop();
+    interrupted(&mut sim, 10);
+
+    // Same size, different moment: still not the file the prefix came from.
+    let answered = answered_for(
+        &mut sim,
+        vec![CatalogEntry {
+            mtime: Timestamp(MTIME + 1),
+            ..only_photo()
+        }],
+    );
+    assert_eq!(reads_in(&answered), 0, "a superseded partial was read back");
+    assert_eq!(resume_offset_in(&answered), Some(0));
+    agreed(&sim);
+}
+
+#[test]
+fn a_partial_nothing_can_read_starts_again() {
+    covers!("R-STAGE-009");
+    let mut sim = desktop();
+    interrupted(&mut sim, 10);
+
+    // The disk still has the row and will not give the bytes back.
+    sim.faults.refuse_staged_reads = true;
+    let answered = answered_for(&mut sim, vec![only_photo()]);
+
+    assert_eq!(reads_in(&answered), 1, "the desktop never tried to read it");
+    assert_eq!(
+        resume_offset_in(&answered),
+        Some(0),
+        "a prefix nothing could read was trusted anyway"
+    );
+    agreed(&sim);
+}
+
+#[test]
+fn a_long_partial_is_read_back_a_chunk_at_a_time() {
+    covers!("R-STAGE-009", "R-STAGE-008");
+    // Half again as much as one read covers, so the second read has to start where the first
+    // one stopped rather than anywhere else.
+    const KEPT: usize = 1024 * 1024 + 512 * 1024;
+    let long: Vec<u8> = (0..2 * 1024 * 1024u32).map(|at| (at % 251) as u8).collect();
+
+    let mut sim = desktop();
+    let entry = CatalogEntry {
+        path: photo_path(),
+        size: long.len() as u64,
+        mtime: Timestamp(MTIME),
+    };
+    let answered = answered_for(&mut sim, vec![entry.clone()]);
+    let file = match answered.iter().find_map(|effect| match effect {
+        photo_sync_core::Effect::SendDiff { to_send, .. } => to_send.first().map(|one| one.file),
+        _ => None,
+    }) {
+        Some(file) => file,
+        None => panic!("the desktop asked for nothing"),
+    };
+
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file,
+        path: photo_path(),
+        offset: 0,
+    });
+    sim.deliver(Event::ChunkArrived {
+        device: phone(),
+        file,
+        offset: 0,
+        data: long[..KEPT].to_vec(),
+    });
+    sim.deliver(Event::PeerDisconnected { device: phone() });
+    sim.restart();
+
+    let answered = answered_for(&mut sim, vec![entry]);
+    assert_eq!(
+        reads_in(&answered),
+        2,
+        "a megabyte and a half should take two reads and no more"
+    );
+    assert_eq!(
+        resume_offset_in(&answered),
+        Some(KEPT as u64),
+        "the prefix was not rebuilt to the watermark"
+    );
+    agreed(&sim);
 }

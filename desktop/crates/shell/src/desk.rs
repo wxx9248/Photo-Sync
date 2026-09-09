@@ -114,6 +114,18 @@ impl Desk {
                 *op,
                 self.storage.clear_staging_directory(device),
             )),
+            Effect::ReadStagedRange {
+                op,
+                file,
+                offset,
+                length,
+            } => {
+                let read = self.storage.read_staged_range(*file, *offset, *length);
+                Some(Event::StorageOpCompleted {
+                    op: *op,
+                    result: read.map(StorageOutcome::Bytes),
+                })
+            }
             Effect::StatStagingFile { op, file } => {
                 let present = self.storage.stat_staging_file(*file);
                 Some(Event::StorageOpCompleted {

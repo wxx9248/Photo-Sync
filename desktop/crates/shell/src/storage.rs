@@ -233,6 +233,31 @@ impl Storage {
         }
     }
 
+    /// Reads part of a staged file back, for rebuilding a partial's digest.
+    pub fn read_staged_range(
+        &mut self,
+        file: FileId,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, StorageError> {
+        use std::io::Read;
+
+        let path = self.staged_path(file)?;
+        let mut handle = File::open(&path).map_err(failure)?;
+        handle.seek(SeekFrom::Start(offset)).map_err(failure)?;
+
+        let mut bytes = vec![0u8; length as usize];
+        let mut filled = 0;
+        while filled < bytes.len() {
+            match handle.read(&mut bytes[filled..]).map_err(failure)? {
+                0 => break,
+                read => filled += read,
+            }
+        }
+        bytes.truncate(filled);
+        Ok(bytes)
+    }
+
     pub fn stat_staging_file(&self, file: FileId) -> Result<bool, StorageError> {
         match self.staged_path(file) {
             Ok(path) => Ok(path.exists()),

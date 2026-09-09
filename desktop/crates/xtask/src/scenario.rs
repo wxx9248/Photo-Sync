@@ -127,6 +127,12 @@ pub struct Vault {
 pub enum ScenarioEvent {
     /// The phone runs one whole session, from the handshake to the summary.
     RunSession,
+
+    /// The phone sends this many bytes of the first file it is asked for and then vanishes.
+    InterruptTransfer { after_bytes: u64 },
+
+    /// The power goes out and the desktop comes back.
+    Restart,
 }
 
 /// What the scenario says should be true afterwards. Every list is compared in full and in
@@ -419,7 +425,7 @@ fn in_simulation(scenario: &Scenario, mut world: World) -> Result<Observed, Trou
     sim.take_log();
 
     let mut observed = Observed::default();
-    play(&scenario.events, &mut world.phone, &mut sim, &mut observed);
+    play(&scenario.events, &mut world.phone, &mut sim, &mut observed)?;
     observed.vault = sim
         .storage
         .vault()
@@ -477,7 +483,7 @@ fn on_the_real_stack(scenario: &Scenario, mut world: World) -> Result<Observed, 
     let mut connected = running
         .connect(&DeviceId::new(DEVICE), "Scenario phone")
         .map_err(Trouble::Failed)?;
-    play(
+    let played = play(
         &scenario.events,
         &mut world.phone,
         &mut connected,
@@ -486,6 +492,7 @@ fn on_the_real_stack(scenario: &Scenario, mut world: World) -> Result<Observed, 
 
     observed.vault = running.vault_names();
     running.stop();
+    played?;
     Ok(observed)
 }
 
@@ -494,7 +501,7 @@ fn play(
     phone: &mut Phone,
     driver: &mut impl photo_sync_sim::Driver,
     observed: &mut Observed,
-) {
+) -> Result<(), Trouble> {
     for event in events {
         match event {
             ScenarioEvent::RunSession => {
@@ -507,8 +514,22 @@ fn play(
                 observed.phone_deleted.extend(named(&outcome.deleted));
                 observed.phone_kept.extend(named(&outcome.kept));
             }
+            // What arrived before the connection died is not counted as uploaded: the file
+            // is still owed, and the next session is what settles it.
+            ScenarioEvent::InterruptTransfer { after_bytes } => {
+                let outcome = phone.send_partly(driver, *after_bytes);
+                observed.rejected |= outcome.rejected.is_some();
+            }
+            ScenarioEvent::Restart => {
+                if !driver.power_cycle() {
+                    return Err(Trouble::OnlySimulated(
+                        "it takes the power away from the desktop".to_string(),
+                    ));
+                }
+            }
         }
     }
+    Ok(())
 }
 
 /// A directory of its own for one scenario, removed when it ends.

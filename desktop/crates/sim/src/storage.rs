@@ -229,6 +229,17 @@ impl Storage {
         self.live.vault.get(name).map(|bytes| bytes.len() as u64)
     }
 
+    /// Reads part of a staged file back, as the shell would.
+    #[must_use]
+    pub fn read_range(&self, file: FileId, offset: u64, length: u64) -> Vec<u8> {
+        let Some(staged) = self.live.staging.get(&file) else {
+            return Vec::new();
+        };
+        let from = (offset as usize).min(staged.bytes.len());
+        let to = (from + length as usize).min(staged.bytes.len());
+        staged.bytes[from..to].to_vec()
+    }
+
     #[must_use]
     pub fn holds(&self, file: FileId) -> bool {
         self.live.staging.contains_key(&file)

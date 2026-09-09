@@ -126,6 +126,9 @@ pub enum StorageOutcome {
     StagingFile {
         present: bool,
     },
+
+    /// Bytes read back out of a staged file.
+    Bytes(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

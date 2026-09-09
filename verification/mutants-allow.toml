@@ -24,3 +24,8 @@ reason = "Debug rendering of the running digest. The digest itself is checked ag
 file = "desktop/crates/core/src/id.rs"
 function = "Sha256::fmt"
 reason = "Debug rendering of a digest. Its hexadecimal form is checked directly, and this only decides how a failure message reads."
+
+[[allow]]
+file = "desktop/crates/core/src/desktop.rs"
+function = "REBUILD_CHUNK_BYTES"
+reason = "How much of a partial is read back at a time. Every size gives the same digest and the same resume offset, so a test pinning it would only be reading the constant back."
