@@ -1,6 +1,7 @@
 package top.wxx9248.photosync.net
 
 import android.content.Context
+import kotlinx.coroutines.coroutineScope
 import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.session.DeviceId
 import top.wxx9248.photosync.session.Outcome
@@ -40,10 +41,14 @@ class Sync(
             library = library,
         )
 
-        GrpcDesktop.connect(address, identity, paired.publicKey).use { desktop ->
-            while (session.outcome == null) {
-                val said = session.next() ?: break
-                desktop.say(said)?.let { session.receive(it) }
+        // The upload of a file spans many exchanges, so it runs in this scope rather than
+        // inside one of them. Leaving here waits for it, and closing the desktop ends it.
+        coroutineScope {
+            GrpcDesktop.connect(address, identity, paired.publicKey, this).use { desktop ->
+                while (session.outcome == null) {
+                    val said = session.next() ?: break
+                    desktop.say(said)?.let { session.receive(it) }
+                }
             }
         }
         return session.outcome
