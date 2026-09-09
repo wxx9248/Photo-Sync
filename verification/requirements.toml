@@ -450,6 +450,14 @@ status = "active"
 quote = "can only cause *under-deletion* — never a wrong deletion"
 
 [[requirement]]
+id = "R-PAIR-005"
+section = "§5.2"
+area = "PAIR"
+status = "active"
+quote = "Both sides pin each other's keys; all subsequent sessions are automatic and TLS-encrypted."
+note = "A desktop that reads its pairings from somewhere other than where it writes them asks for the code again on every restart."
+
+[[requirement]]
 id = "R-SESSION-001"
 section = "§3.4"
 area = "SESSION"

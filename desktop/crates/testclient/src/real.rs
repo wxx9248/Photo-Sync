@@ -96,6 +96,7 @@ impl Prepared {
                 PairingWindow::closed(),
                 Arc::new(AsyncMutex::new(desk)),
                 "Scenario desktop",
+                &self.root,
             ))
             .map_err(|error| error.to_string())?;
 

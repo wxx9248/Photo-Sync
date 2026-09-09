@@ -89,32 +89,16 @@ impl Listening {
     }
 }
 
-/// Serves phones on `address`, which may be port zero to let the machine choose.
-pub async fn listen(
-    address: SocketAddr,
-    identity: Arc<Identity>,
-    paired: Arc<Mutex<Paired>>,
-    pairing: PairingWindow,
-    desk: Arc<AsyncMutex<Desk>>,
-    name: &str,
-) -> std::io::Result<Listening> {
-    listen_in(
-        address,
-        identity,
-        paired,
-        pairing,
-        desk,
-        name,
-        Path::new("."),
-    )
-    .await
-}
-
-/// Serves phones, recording anything newly paired in `directory`.
+/// Serves phones on `address`, which may be port zero to let the machine choose, recording
+/// anything newly paired in `directory`.
+///
+/// The directory is asked for rather than defaulted. A desktop that wrote its pairings
+/// somewhere other than where it reads them starts up not knowing any phone, and §5.2 makes
+/// pairing a once-ever act, so that is a machine somebody has to pair again by hand.
 ///
 /// # Errors
 /// When the socket cannot be bound or the identity will not make a server configuration.
-pub async fn listen_in(
+pub async fn listen(
     address: SocketAddr,
     identity: Arc<Identity>,
     paired: Arc<Mutex<Paired>>,

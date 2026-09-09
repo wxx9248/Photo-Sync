@@ -88,6 +88,7 @@ impl Desktop {
             PairingWindow::closed(),
             held,
             "Test desktop",
+            &scratch.path,
         ));
         let listening = match listening {
             Ok(listening) => listening,

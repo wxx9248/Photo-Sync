@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use photo_sync::desk::Desk;
 use photo_sync::identity::Identity;
 use photo_sync::pinning::Paired;
-use photo_sync::serve::{Listening, listen_in};
+use photo_sync::serve::{Listening, listen};
 use photo_sync::tls::PairingWindow;
 use photo_sync_core::covers;
 use photo_sync_core::id::DeviceId;
@@ -57,7 +57,7 @@ impl Desktop {
 
         let paired = Arc::new(Mutex::new(Paired::new()));
         let window = PairingWindow::closed();
-        let listening = runtime.block_on(listen_in(
+        let listening = runtime.block_on(listen(
             "127.0.0.1:0".parse().unwrap_or_else(|_| unreachable!()),
             Arc::new(identity.clone()),
             Arc::clone(&paired),
@@ -145,6 +145,40 @@ fn a_first_connection_puts_the_same_code_on_both_screens() {
     desktop.window.confirm();
     assert!(pairing.settled());
     assert!(desktop.knows_anyone());
+}
+
+#[test]
+fn a_desktop_that_starts_again_still_knows_the_phone() {
+    covers!("R-PAIR-005");
+    let desktop = Desktop::start();
+    let phone = desktop.phone_identity("phone");
+    desktop.window.open();
+
+    let pairing = match pair(
+        desktop.runtime.handle(),
+        desktop.address,
+        &phone,
+        &DeviceId::new("phone-a"),
+        "Kitchen phone",
+    ) {
+        Ok(pairing) => pairing,
+        Err(error) => panic!("cannot start pairing: {error}"),
+    };
+    assert!(desktop.showing().is_some());
+    desktop.window.confirm();
+    assert!(pairing.settled());
+
+    // What a desktop starting up does: read the same directory the pairing was written to.
+    // §5.2 makes pairing a once-ever act, so a desktop that reads somewhere else asks a
+    // person to do it again every time it restarts.
+    let after_restart = match Paired::load(&desktop.path) {
+        Ok(paired) => paired,
+        Err(error) => panic!("a restarted desktop cannot read its pairings: {error}"),
+    };
+    assert!(
+        !after_restart.is_empty(),
+        "the desktop forgot the phone it had just paired with"
+    );
 }
 
 #[test]

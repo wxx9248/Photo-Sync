@@ -73,8 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = data_directory();
     std::fs::create_dir_all(&data)?;
     let identity = Arc::new(Identity::load_or_create(&data.join("identity"))?);
-    let pairings = data.join("paired.json");
-    let paired = Arc::new(Mutex::new(Paired::load(&pairings)?));
+    // The same directory the pairing service writes into. Reading from one place and
+    // writing to another is a desktop that forgets every phone when it restarts.
+    let paired = Arc::new(Mutex::new(Paired::load(&data)?));
     let desk = Arc::new(AsyncMutex::new(Desk::open(
         &settings.vault,
         &data.join("index.db"),
@@ -91,6 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         PairingWindow::closed(),
         Arc::clone(&desk),
         &settings.name,
+        &data,
     ))?;
     tracing::info!(port = listening.address.port(), "listening");
 
