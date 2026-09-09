@@ -816,3 +816,39 @@ fn a_partial_is_discarded_when_the_photograph_changes_mid_session() {
     );
     agreed(&sim);
 }
+
+#[test]
+fn a_commit_stopped_before_it_was_sealed_lands_at_the_next_one() {
+    covers!("R-RECOVER-001");
+    let mut sim = desktop();
+    let file = offer(&mut sim);
+    send_all(&mut sim, file);
+
+    // Two steps into the commit the power goes. Nothing has been sealed, so §7.4 discards
+    // what there is and treats staging as fresh; the verified entry is still in the manifest.
+    sim.deliver_stopping_after(Event::FinishRequested { device: phone() }, 2);
+    sim.restart();
+    assert!(
+        sim.storage.vault().is_empty(),
+        "a commit that never sealed put a file in the vault"
+    );
+    assert_eq!(sim.store.manifest().len(), 1, "the verified entry was lost");
+
+    // The next session asks for nothing and commits what was already there.
+    let answered = answered_for(&mut sim, vec![only_photo()]);
+    assert!(
+        !answered.iter().any(|effect| matches!(
+            effect,
+            photo_sync_core::Effect::SendDiff { to_send, .. } if !to_send.is_empty()
+        )),
+        "the photograph was asked for again although it was staged and verified"
+    );
+    sim.deliver(Event::FinishRequested { device: phone() });
+
+    assert_eq!(
+        sim.storage.vault().len(),
+        1,
+        "the photograph never reached the vault"
+    );
+    assert_eq!(sim.store.device_files().len(), 1);
+}

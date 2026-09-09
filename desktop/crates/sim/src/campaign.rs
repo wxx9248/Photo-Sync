@@ -57,8 +57,9 @@ pub enum Op {
     /// The power goes out and the machine comes back.
     Restart,
 
-    /// The power goes out part-way through a commit.
-    CrashCommitting,
+    /// The power goes out part-way through a commit. The number says how many of the
+    /// commit's steps happened before it did, so a seed can stop anywhere in §7.3.
+    CrashCommitting(u8),
 
     /// Somebody deletes a photograph out of the vault.
     Curate(u8),
@@ -76,7 +77,7 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
         3 => ((0u8..6), (0u8..6)).prop_map(|(from, to)| Op::Copy(from, to)),
         6 => Just(Op::Sync),
         2 => Just(Op::Restart),
-        2 => Just(Op::CrashCommitting),
+        2 => (0u8..28).prop_map(Op::CrashCommitting),
         1 => (0u8..6).prop_map(Op::Curate),
         2 => (0u8..4).prop_map(Op::FillDisk),
     ];
@@ -195,15 +196,15 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
                 phone.run_session(&mut sim);
             }
             Op::Restart => sim.restart(),
-            Op::CrashCommitting => {
-                // Get the photographs across, then take the machine away in the middle of
-                // putting them into the vault.
+            Op::CrashCommitting(after) => {
+                // Get the photographs across, then take the machine away part-way through
+                // putting them into the vault. How far it got is the seed's to choose.
                 phone.run_session_until_commit(&mut sim);
-                sim.deliver_until(
+                sim.deliver_stopping_after(
                     Event::FinishRequested {
                         device: DeviceId::new(DEVICE),
                     },
-                    |effect| matches!(effect, photo_sync_core::Effect::RenameIntoVault { .. }),
+                    usize::from(*after),
                 );
                 sim.restart();
             }

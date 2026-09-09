@@ -140,13 +140,20 @@ impl Simulation {
             .values()
             .map(|bytes| digest(bytes))
             .collect();
-        compare("the vault holds", &expected.vault, &held, &mut differences);
+        compare(
+            "the vault holds",
+            &expected.vault,
+            &held,
+            &expected.undecided,
+            &mut differences,
+        );
 
         let known: BTreeSet<Sha256> = self.store.content().keys().copied().collect();
         compare(
             "the index knows",
             &expected.content,
             &known,
+            &expected.undecided,
             &mut differences,
         );
 
@@ -166,6 +173,9 @@ impl Simulation {
             })
             .collect();
         for (key, expected_row) in &expected.device_files {
+            if expected.undecided_files.contains(key) {
+                continue;
+            }
             match recorded.get(key) {
                 Some(found) if found == expected_row => {}
                 Some(found) => differences.push(format!(
@@ -179,7 +189,7 @@ impl Simulation {
             }
         }
         for key in recorded.keys() {
-            if !expected.device_files.contains_key(key) {
+            if !expected.device_files.contains_key(key) && !expected.undecided_files.contains(key) {
                 differences.push(format!("{} on {} has a row nothing earned", key.1, key.0));
             }
         }
@@ -277,6 +287,30 @@ impl Simulation {
             if stop(&effect) {
                 return;
             }
+            let completion = self.perform(&effect);
+            self.log.push(effect);
+            if let Some(completion) = completion {
+                queue.extend(self.desktop.handle(completion));
+            }
+        }
+    }
+
+    /// Delivers one event and performs only the first `count` effects it leads to. Whatever
+    /// was queued behind them never happens, which is where the power went.
+    ///
+    /// Counting reaches crash points no named effect can: between two store writes of the
+    /// same kind, part-way through a group of renames, or between the two halves of a clear.
+    /// `SPEC.md` §7.4 claims recovery is idempotent at *any* power-off point, and this is
+    /// what "any" means.
+    pub fn deliver_stopping_after(&mut self, event: Event, count: usize) {
+        self.model.observe(&event);
+        let mut queue: VecDeque<Effect> = self.desktop.handle(event).into();
+        let mut performed = 0;
+        while let Some(effect) = queue.pop_front() {
+            if performed >= count {
+                return;
+            }
+            performed += 1;
             let completion = self.perform(&effect);
             self.log.push(effect);
             if let Some(completion) = completion {
@@ -502,16 +536,27 @@ fn digest(bytes: &[u8]) -> Sha256 {
 }
 
 /// Says what one side has that the other does not, rather than that they differ.
+/// Compares two accounts, saying nothing about whatever a power loss left undecided.
+///
+/// An undecided digest is one the model cannot place until the next commit settles it, so it
+/// is neither required nor forbidden here. Everything else is compared exactly.
 fn compare(
     what: &str,
     expected: &BTreeSet<Sha256>,
     found: &BTreeSet<Sha256>,
+    undecided: &BTreeSet<Sha256>,
     into: &mut Vec<String>,
 ) {
     for missing in expected.difference(found) {
+        if undecided.contains(missing) {
+            continue;
+        }
         into.push(format!("{what} nothing for {missing:?}, which it should"));
     }
     for extra in found.difference(expected) {
+        if undecided.contains(extra) {
+            continue;
+        }
         into.push(format!("{what} {extra:?}, which nothing earned"));
     }
 }
