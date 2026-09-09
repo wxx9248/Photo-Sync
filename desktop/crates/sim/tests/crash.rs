@@ -887,3 +887,44 @@ fn a_commit_that_cannot_rename_stops_and_is_finished_later() {
     assert_eq!(sim.store.device_files().len(), 1);
     assert!(sim.store.sealed_plan(&phone()).is_none());
 }
+
+#[test]
+fn a_photograph_is_not_given_up_for_whatever_sits_at_its_name() {
+    covers!("R-RECOVER-005");
+    let mut sim = desktop();
+    commit_until(&mut sim, is_rename);
+
+    // The name the sealed plan reserved for this photograph.
+    let reserved = match sim
+        .store
+        .sealed_plan(&phone())
+        .and_then(|plan| plan.first())
+    {
+        Some(entry) => match &entry.action {
+            photo_sync_core::store::PlanAction::Import { name }
+            | photo_sync_core::store::PlanAction::Duplicate { name } => name.clone(),
+        },
+        None => panic!("nothing was sealed"),
+    };
+
+    // Something that is not this desktop puts a file there while the machine is down, which
+    // is the single writer of §7.4 not holding.
+    sim.storage
+        .put_in_vault(&reserved, b"not the photograph".to_vec());
+    sim.restart();
+
+    // §7.4 reasons that a file already at a target must be this desktop's own completed
+    // rename, and says that reading is sound only under the single-writer assumption. The
+    // desktop never makes that inference: it decides from the staged file, which is still
+    // there when the rename has not happened, so the photograph is written and it is the
+    // intruder that goes. Recovery is idempotent here for a reason that does not need the
+    // assumption at all.
+    assert_eq!(
+        sim.storage.vault().get(&reserved),
+        Some(&PHOTO.to_vec()),
+        "the photograph was given up for whatever was sitting at its name"
+    );
+    assert_eq!(sim.storage.vault().len(), 1);
+    assert_eq!(sim.store.device_files().len(), 1);
+    agreed(&sim);
+}

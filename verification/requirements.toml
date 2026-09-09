@@ -233,49 +233,49 @@ quote = "Commits are **serialized across devices**"
 id = "R-COMMIT-002"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "the per-device lock is held from finish-signal (commit enqueued) until the commit completes"
 
 [[requirement]]
 id = "R-COMMIT-003"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "each commit inserts its index rows *before* releasing the global commit lock"
 
 [[requirement]]
 id = "R-COMMIT-004"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "look up its recorded sha256 (computed during streaming — no file bytes are re-read"
 
 [[requirement]]
 id = "R-COMMIT-005"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "**duplicate** (hash already in the index, or already assigned earlier in this batch"
 
 [[requirement]]
 id = "R-COMMIT-006"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "A manifest entry whose staging file is missing is dropped with a logged warning."
 
 [[requirement]]
 id = "R-COMMIT-007"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "Write the map to a **write-log** in the staging directory; flush; seal with an end marker."
 
 [[requirement]]
 id = "R-COMMIT-008"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "After each group, fsync the vault and staging directories, **then** append flushed done-marks for the group."
 note = "A done-mark that survives a power loss must imply its rename survived too."
 
@@ -283,28 +283,28 @@ note = "A done-mark that survives a power loss must imply its rename survived to
 id = "R-COMMIT-009"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "A failed `rename()` (ENOSPC, I/O error) halts the commit after the current entry"
 
 [[requirement]]
 id = "R-COMMIT-010"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "Insert index rows for the batch (durable before proceeding)"
 
 [[requirement]]
 id = "R-COMMIT-011"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "**write-log first**"
 
 [[requirement]]
 id = "R-COMMIT-012"
 section = "§7.3"
 area = "COMMIT"
-status = "deferred"
+status = "active"
 quote = "Clearing removes in-progress partials too"
 
 [[requirement]]
@@ -339,35 +339,35 @@ quote = "Replay index insertion (idempotent upsert"
 id = "R-RECOVER-005"
 section = "§7.4"
 area = "RECOVER"
-status = "deferred"
+status = "active"
 quote = "Recovery assumes the vault has a **single writer**"
 
 [[requirement]]
 id = "R-INDEX-001"
 section = "§7.5"
 area = "INDEX"
-status = "deferred"
+status = "active"
 quote = "**content** table keyed by sha256"
 
 [[requirement]]
 id = "R-INDEX-002"
 section = "§7.5"
 area = "INDEX"
-status = "deferred"
+status = "active"
 quote = "keyed by **(device_id, device_path)** — re-importing a changed file **replaces** the row"
 
 [[requirement]]
 id = "R-INDEX-003"
 section = "§7.5"
 area = "INDEX"
-status = "deferred"
+status = "active"
 quote = "once imported, a photo is never re-imported"
 
 [[requirement]]
 id = "R-INDEX-004"
 section = "§7.5"
 area = "INDEX"
-status = "deferred"
+status = "active"
 quote = "a **force re-import** action"
 
 [[requirement]]
