@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use photo_sync_core::event::Event;
-use photo_sync_core::id::{DeviceId, DevicePath, Sha256, Timestamp};
+use photo_sync_core::id::{DeviceId, DevicePath, FileId, Sha256, Timestamp};
 use photo_sync_core::{CatalogEntry, RunningDigest};
 
 /// What the desktop should be holding, in the terms the specification cares about.
@@ -63,7 +63,10 @@ pub struct Model {
     catalogs: BTreeMap<DeviceId, BTreeMap<DevicePath, CatalogEntry>>,
 
     /// Files arriving now, by the identifier the desktop gave them.
-    arriving: BTreeMap<photo_sync_core::id::FileId, (DeviceId, Arriving)>,
+    arriving: BTreeMap<FileId, (DeviceId, Arriving)>,
+
+    /// Files the desktop said it could not store.
+    refused: BTreeSet<FileId>,
 
     /// Files that arrived whole and are waiting for a finish signal. These outlive a power
     /// loss, because a desktop that verified a file wrote that down before saying so.
@@ -127,6 +130,7 @@ impl Model {
             Event::Started { .. } => {
                 self.arriving.clear();
                 self.catalogs.clear();
+                self.refused.clear();
             }
             Event::PeerConnected { .. }
             | Event::PeerDisconnected { .. }
@@ -142,11 +146,11 @@ impl Model {
     }
 
     /// A file is only worth anything when it arrived whole and matched what the phone said.
-    fn close(&mut self, file: photo_sync_core::id::FileId, claimed: Sha256) {
+    fn close(&mut self, file: FileId, claimed: Sha256) {
         let Some((device, arriving)) = self.arriving.remove(&file) else {
             return;
         };
-        if arriving.digest.peek() != claimed {
+        if self.refused.contains(&file) || arriving.digest.peek() != claimed {
             return;
         }
         let Some(entry) = self
@@ -219,6 +223,25 @@ impl Model {
     /// index and not by the vault, which is the state `SPEC.md` §8 is written around.
     pub fn remember_vault_copy(&mut self, digest: Sha256) {
         self.expected.vault.insert(digest);
+    }
+
+    /// What the desktop answered about a file the phone sent.
+    ///
+    /// Only a refusal is listened to, and only ever to expect less. A desktop that could not
+    /// store a file is the one thing an onlooker cannot work out for itself, since a full
+    /// disk leaves no trace in what the phone said. A desktop claiming success is told
+    /// nothing: this still counts a file only when the bytes it saw hash to what the phone
+    /// stated, so no answer can talk it into expecting a photograph that never arrived.
+    pub fn upload_refused(&mut self, file: FileId) {
+        // A refusal can arrive before the phone has finished sending, so it is remembered
+        // against the file rather than acted on once: what matters is that this file does not
+        // end up counted, whenever the news comes.
+        self.refused.insert(file);
+        if let Some((device, arriving)) = self.arriving.get(&file)
+            && let Some(staged) = self.staged.get_mut(device)
+        {
+            staged.retain(|held| held.path != arriving.path);
+        }
     }
 
     /// Somebody deleted a photograph out of the vault. `SPEC.md` §8 keeps the index row: a

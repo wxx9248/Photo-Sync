@@ -33,6 +33,18 @@ pub struct Faults {
 
     /// Answers every staging stat only once nothing else is outstanding.
     pub answer_stats_last: bool,
+
+    /// A disk that fills after this many writes. `SPEC.md` §4 says exhaustion mid-transfer
+    /// surfaces as an ordinary receive error on that file.
+    pub refuse_write_after: Option<usize>,
+
+    /// A filesystem that says it synced and did not.
+    ///
+    /// This is a negative control rather than a condition to survive. A suite that still
+    /// passes against a filesystem which only pretends to sync is a suite that was never
+    /// testing durability, so `./verify self-test` turns this on and insists the durability
+    /// tests fail. Nothing is expected to cope with it.
+    pub lying_fsync: bool,
 }
 
 /// One desktop, its storage, and the loop between them.
@@ -57,6 +69,9 @@ pub struct Simulation {
     pub free_space: u64,
 
     log: Vec<Effect>,
+
+    /// How many writes have landed, for the disk that fills part-way.
+    writes: usize,
 }
 
 impl Simulation {
@@ -67,10 +82,16 @@ impl Simulation {
             model: Model::new(),
             storage: Storage::new(),
             store: Store::new(),
-            faults: Faults::default(),
+            faults: Faults {
+                // Every simulation in a run built this way, which is how the self-test asks
+                // the whole suite what it would make of a filesystem that lies.
+                lying_fsync: std::env::var("PHOTO_SYNC_LYING_FSYNC").is_ok(),
+                ..Faults::default()
+            },
             now,
             free_space: u64::MAX,
             log: Vec::new(),
+            writes: 0,
         }
     }
 
@@ -290,18 +311,28 @@ impl Simulation {
                 offset,
                 data,
             } => {
-                if self.faults.refuse_writes {
+                if self.faults.refuse_writes
+                    || self
+                        .faults
+                        .refuse_write_after
+                        .is_some_and(|after| self.writes >= after)
+                {
                     return Some(failed(*op, StorageError::NoSpace));
                 }
+                self.writes += 1;
                 self.storage.write_at(*file, *offset, data);
                 Some(done(*op))
             }
             Effect::SyncFile { op, file } => {
-                self.storage.sync_file(*file);
+                if !self.faults.lying_fsync {
+                    self.storage.sync_file(*file);
+                }
                 Some(done(*op))
             }
             Effect::SyncDirectory { op, directory } => {
-                self.storage.sync_directory(directory);
+                if !self.faults.lying_fsync {
+                    self.storage.sync_directory(directory);
+                }
                 Some(done(*op))
             }
             Effect::TruncateFile { op, file, length } => {
@@ -374,8 +405,18 @@ impl Simulation {
                 moment: self.now,
             }),
             Effect::SetTimer { op, at } => Some(Event::TimerFired { op: *op, now: *at }),
+            // A refusal is the one thing an onlooker cannot work out from what the phone
+            // said, so the model is told about it and about nothing else the desktop says.
+            Effect::SendUploadResult { file, outcome, .. } => {
+                if !matches!(
+                    outcome,
+                    photo_sync_core::effect::UploadOutcome::Verified { .. }
+                ) {
+                    self.model.upload_refused(*file);
+                }
+                None
+            }
             Effect::SendDiff { .. }
-            | Effect::SendUploadResult { .. }
             | Effect::SendCandidates { .. }
             | Effect::SendSessionSummary { .. }
             | Effect::RejectSession { .. }

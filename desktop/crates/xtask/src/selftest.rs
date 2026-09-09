@@ -11,32 +11,46 @@
 use std::path::Path;
 use std::process::Command;
 
-/// One deliberately wrong desktop, and the rule it breaks.
-struct Sabotage {
-    feature: &'static str,
+/// How a wrong world is arranged.
+enum Arrange {
+    /// A deliberately wrong desktop, built behind a feature.
+    Sabotage(&'static str),
+
+    /// A world the desktop cannot be right in. Nothing is expected to cope; what is being
+    /// checked is that the suite notices.
+    Lie(&'static str),
+}
+
+/// One wrong world, and the rule it breaks.
+struct Control {
+    how: Arrange,
     breaks: &'static str,
 }
 
-const SABOTAGES: [Sabotage; 4] = [
-    Sabotage {
-        feature: "sabotage-donemark",
+const CONTROLS: [Control; 5] = [
+    Control {
+        how: Arrange::Sabotage("sabotage-donemark"),
         breaks: "§7.3: a done-mark written before the directories are durable",
     },
-    Sabotage {
-        feature: "sabotage-watermark",
+    Control {
+        how: Arrange::Sabotage("sabotage-watermark"),
         breaks: "§7.6: a partial trusted at its length rather than its watermark",
     },
-    Sabotage {
-        feature: "sabotage-dedup",
+    Control {
+        how: Arrange::Sabotage("sabotage-dedup"),
         breaks: "§7.3: a duplicate earning its phone no index row",
     },
-    Sabotage {
-        feature: "sabotage-nomination",
+    Control {
+        how: Arrange::Sabotage("sabotage-nomination"),
         breaks: "§8: nomination trusting the index without looking at the vault",
+    },
+    Control {
+        how: Arrange::Lie("PHOTO_SYNC_LYING_FSYNC"),
+        breaks: "§L1: a filesystem that says it synced and did not",
     },
 ];
 
-/// Builds a wrong desktop four times over and insists the suite objects each time.
+/// Arranges a wrong world five times over and insists the suite objects each time.
 ///
 /// # Errors
 /// When the tests cannot be run at all.
@@ -44,35 +58,43 @@ pub fn run(root: &Path) -> Result<bool, String> {
     let desktop = root.join("desktop");
     let mut all_caught = true;
 
-    for sabotage in &SABOTAGES {
-        let caught = caught_by(&desktop, sabotage.feature)?;
-        match caught {
-            Some(test) => println!("  {} caught by {test}", sabotage.breaks),
+    let mut caught_count = 0;
+    for control in &CONTROLS {
+        match caught_by(&desktop, &control.how)? {
+            Some(test) => {
+                caught_count += 1;
+                println!("  {} caught by {test}", control.breaks);
+            }
             None => {
                 all_caught = false;
-                println!("  {} WENT UNNOTICED", sabotage.breaks);
+                println!("  {} WENT UNNOTICED", control.breaks);
             }
         }
     }
 
     println!(
-        "self-test: {} of {} known-bad desktops were caught",
-        SABOTAGES.iter().len() - usize::from(!all_caught),
-        SABOTAGES.len()
+        "self-test: {caught_count} of {} wrong worlds were noticed",
+        CONTROLS.len()
     );
     Ok(all_caught)
 }
 
 /// Runs the suite against one sabotaged desktop and names the first test that objected.
-fn caught_by(desktop: &Path, feature: &str) -> Result<Option<String>, String> {
-    let output = Command::new("cargo")
-        .args([
-            "test",
-            "--workspace",
-            "--features",
-            &format!("photo-sync-core/{feature}"),
-        ])
-        .current_dir(desktop)
+fn caught_by(desktop: &Path, how: &Arrange) -> Result<Option<String>, String> {
+    let mut command = Command::new("cargo");
+    command.arg("test").arg("--workspace").current_dir(desktop);
+    match how {
+        Arrange::Sabotage(feature) => {
+            command
+                .arg("--features")
+                .arg(format!("photo-sync-core/{feature}"));
+        }
+        Arrange::Lie(variable) => {
+            command.env(variable, "1");
+        }
+    }
+
+    let output = command
         .output()
         .map_err(|error| format!("cannot run the tests: {error}"))?;
 
@@ -109,9 +131,9 @@ mod tests {
     }
 
     #[test]
-    fn every_sabotage_says_which_rule_it_breaks() {
-        for sabotage in &SABOTAGES {
-            assert!(sabotage.breaks.starts_with('§'), "{}", sabotage.feature);
+    fn every_control_says_which_rule_it_breaks() {
+        for control in &CONTROLS {
+            assert!(control.breaks.starts_with('§'), "{}", control.breaks);
         }
     }
 }

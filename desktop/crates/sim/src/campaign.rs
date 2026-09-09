@@ -58,6 +58,10 @@ pub enum Op {
 
     /// Somebody deletes a photograph out of the vault.
     Curate(u8),
+
+    /// The disk fills part-way through the next session. `SPEC.md` §4 makes that an ordinary
+    /// receive error on the file it happens to, rather than anything the desktop must undo.
+    FillDisk(u8),
 }
 
 fn operations() -> impl Strategy<Value = Vec<Op>> {
@@ -69,6 +73,7 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
         2 => Just(Op::Restart),
         2 => Just(Op::CrashCommitting),
         1 => (0u8..6).prop_map(Op::Curate),
+        2 => (0u8..4).prop_map(Op::FillDisk),
     ];
     proptest::collection::vec(one, 1..14)
 }
@@ -184,6 +189,11 @@ fn play(ops: &[Op]) -> Result<(), Vec<String>> {
                     |effect| matches!(effect, photo_sync_core::Effect::RenameIntoVault { .. }),
                 );
                 sim.restart();
+            }
+            Op::FillDisk(after) => {
+                sim.faults.refuse_write_after = Some(usize::from(*after));
+                phone.run_session(&mut sim);
+                sim.faults.refuse_write_after = None;
             }
             Op::Curate(which) => {
                 let names: Vec<VaultName> = sim.storage.vault().keys().cloned().collect();
