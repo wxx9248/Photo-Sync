@@ -57,6 +57,11 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
 
+    // The wire adapter holds no Android type, so it is checked on a plain JVM against a
+    // server in this process. docs/CONVENTIONS-KOTLIN.md rule K13 is what makes that possible.
+    testImplementation(kotlin("test-junit"))
+    testImplementation(libs.grpc.inprocess)
+
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
 }

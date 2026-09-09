@@ -1,6 +1,5 @@
-# Toolchain versions are the latest stable releases. The Android SDK platform is not installed
-# on the development machine, so `compileSdk` is confirmed the first time the application module
-# is built somewhere that has one.
+# Toolchain versions are the latest stable releases. The development machine has the Android
+# SDK, so `compileSdk` is confirmed by every build of the application module.
 [versions]
 agp = "9.4.0"
 kotlin = "2.4.20"
@@ -37,6 +36,7 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
 protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
 grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess", version.ref = "grpc" }
 grpc-protobuf-lite = { module = "io.grpc:grpc-protobuf-lite", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
