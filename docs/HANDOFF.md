@@ -34,7 +34,9 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
       reaches `surfaceflinger`, `adbd` and `bootanim`, and `adb` sees the device --- and then the
       emulator process on the host exits with status 1 and no message, a minute or two in.
       Renderer, memory and core count make no difference, and Gradle's managed-device path
-      fails the same way. It reads like the container rather than the project. On a machine
+      fails the same way. This development machine is itself a virtual machine, so the
+      emulator runs nested, and the kernel log shows its vcpu being created and torn down on
+      each attempt. That is the likeliest reason and it is not the project's. On a machine
       where an emulator stays up: `cd android && ./gradlew :app:phoneDebugAndroidTest`. Four
       tests, all about what MediaStore does rather than what this code does with the answer.
       When they pass, `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13, §16)
@@ -611,4 +613,5 @@ could confirm when they were written.
   Photos Access on Android 14, which is a product decision about partial media grants and not
   something to settle in an inspection. The rest are backup and data-extraction rules. Lint
   fails on errors only; making warnings fail would mean settling all eight first.
-- **The emulator.** See §0. The guest boots; the host process does not stay up.
+- **The emulator.** See §0. The guest boots; the emulator process does not stay up, most
+  likely because this machine is a virtual machine and the emulator is a second one inside it.
