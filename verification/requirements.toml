@@ -549,6 +549,14 @@ status = "active"
 quote = "staged sessions with a manual **\"Commit now\"** action"
 
 [[requirement]]
+id = "R-UI-004"
+section = "§4"
+area = "UI"
+status = "deferred"
+quote = "always ready, so the parents only ever think about the phone"
+note = "Closing the window puts it away; only the tray's Quit leaves. Nothing in the suite can close a window, so a person confirms this one."
+
+[[requirement]]
 id = "R-UI-002"
 section = "§4"
 area = "UI"

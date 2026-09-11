@@ -41,8 +41,8 @@ android {
             localDevices {
                 create("phone") {
                     device = "Pixel 6"
-                    apiLevel = 34
-                    systemImageSource = "aosp-atd"
+                    apiLevel = 37
+                    systemImageSource = "google_apis_playstore"
                 }
             }
         }

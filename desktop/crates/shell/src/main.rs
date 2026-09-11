@@ -157,7 +157,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    window.run()?;
+    // Closing the window puts it away and nothing more. `SPEC.md` §4 asks for an application
+    // that is always ready, and a tray icon is only worth having if the process behind it is
+    // still listening: a desktop that stopped advertising when its window was dismissed is one
+    // a phone cannot find until somebody opens it again. Leaving is the tray's Quit item,
+    // which is what `tray.rs` already says of it.
+    window
+        .window()
+        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+
+    // `run()` would end the loop as soon as the last window went away, hiding included, so
+    // the loop is run in the mode that ends only when something asks it to.
+    window.show()?;
+    slint::run_event_loop_until_quit()?;
 
     tracing::info!("stopping");
     if let Some(tray_item) = tray_item {
