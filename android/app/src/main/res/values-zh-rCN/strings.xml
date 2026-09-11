@@ -7,7 +7,19 @@
     <string name="permission_grant">继续</string>
     <string name="permission_refused">没有这项权限，这个应用什么也做不了。你可以在"设置"里授予。</string>
 
-    <string name="start_summary">%1$d 张新照片，%2$d 张已备份。</string>
+    <string name="pairing_title">与电脑配对</string>
+    <string name="pairing_looking">正在寻找电脑……</string>
+    <string name="pairing_compare">请核对这几位数字与电脑上显示的是否一致，然后在电脑上确认。</string>
+    <string name="pairing_refused">电脑没有接受这台手机。</string>
+    <string name="pair">寻找电脑</string>
+
+    <string name="no_desktop">电脑没有响应。它开着吗？是否和手机在同一个网络？</string>
+
+    <string name="transfer_working">正在处理……</string>
+    <string name="transfer_done">已发送 %1$d 张，释放 %2$d 张，保留 %3$d 张。</string>
+    <string name="again">再来一次</string>
+
+    <string name="start_ready">准备就绪。点击"开始"，电脑会算出还缺哪些照片。</string>
     <string name="start">开始</string>
 
     <string name="free_up_summary">%1$d 张照片已安全保存在电脑上——其中 %2$d 张来自本次传输，%3$d 张来自此前。要释放空间吗？</string>

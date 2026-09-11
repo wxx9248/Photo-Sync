@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.coroutineScope
 import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.session.DeviceId
+import top.wxx9248.photosync.session.FreeUp
 import top.wxx9248.photosync.session.Outcome
 import top.wxx9248.photosync.session.PairedDesktop
 import top.wxx9248.photosync.session.Session
@@ -23,10 +24,14 @@ internal class Sync(
     /**
      * Runs a session against the desktop this phone is paired with.
      *
+     * `ask` is §8's one prompt, answered true to free the space up. It is passed in rather
+     * than reached for, because the person answering is in front of a screen this class knows
+     * nothing about, and because a session driven by a test can answer it without one.
+     *
      * Returns null when no desktop answered, which §5.1 treats as "is the computer on?"
      * rather than as a failure.
      */
-    suspend fun run(paired: PairedDesktop): Outcome? {
+    suspend fun run(paired: PairedDesktop, ask: suspend (FreeUp) -> Boolean): Outcome? {
         val address = Discovery(context).find() ?: return null
 
         val library = MediaStoreLibrary(context.contentResolver)
@@ -46,6 +51,13 @@ internal class Sync(
         coroutineScope {
             GrpcDesktop.connect(address, identity, paired.publicKey, this).use { desktop ->
                 while (session.outcome == null) {
+                    val waiting = session.asking
+                    if (waiting != null) {
+                        // Nothing crosses the wire while a person decides, and nothing is
+                        // deleted until they have. §8.
+                        if (ask(waiting)) session.freeUp() else session.keepThem()
+                        continue
+                    }
                     val said = session.next() ?: break
                     desktop.say(said)?.let { session.receive(it) }
                 }

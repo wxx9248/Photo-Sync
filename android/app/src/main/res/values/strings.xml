@@ -10,8 +10,23 @@
     <string name="permission_grant">Continue</string>
     <string name="permission_refused">Without it there is nothing this application can do. You can grant it in Settings.</string>
 
+    <!-- Step five of §3.1. The digits are compared by a person looking at both screens, so
+         the wording has to say which screen does what. -->
+    <string name="pairing_title">Pair with your computer</string>
+    <string name="pairing_looking">Looking for the computer…</string>
+    <string name="pairing_compare">Check these digits match the ones on the computer, then confirm there.</string>
+    <string name="pairing_refused">The computer did not accept this phone.</string>
+    <string name="pair">Look for the computer</string>
+
+    <!-- What §5.1 calls the "is the computer on?" case, which is not an error. -->
+    <string name="no_desktop">The computer did not answer. Is it switched on and on the same network?</string>
+
+    <string name="transfer_working">Working…</string>
+    <string name="transfer_done">%1$d sent, %2$d freed, %3$d kept.</string>
+    <string name="again">Again</string>
+
     <!-- Tap one of §3.4. The counts are what the diff worked out. -->
-    <string name="start_summary">%1$d new photos, %2$d already safe.</string>
+    <string name="start_ready">Ready. Tap Start and the computer will work out what it does not have.</string>
     <string name="start">Start</string>
 
     <!-- The single prompt of §8, split between this transfer and earlier ones. -->

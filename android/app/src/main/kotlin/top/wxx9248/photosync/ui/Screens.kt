@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -57,34 +56,102 @@ internal fun PermissionScreen(state: PermissionState, onGrant: () -> Unit) {
     }
 }
 
-/** The summary a person is shown before anything moves. §3.4, tap one. */
-internal data class StartState(
-    val newPhotos: Long,
-    val alreadySafe: Long,
-    val bytes: Long,
-    val busy: Boolean,
-    val progress: Float,
-)
+/**
+ * Step five of §3.1: the six digits, on the phone's side of the comparison.
+ *
+ * [code] is null until the handshake has happened, and [refused] means the person at the
+ * desktop said no --- which is an answer rather than a fault, and reads better as one.
+ */
+internal data class PairingState(val code: String?, val refused: Boolean)
 
 @Composable
-internal fun StartScreen(state: StartState, onStart: () -> Unit) {
+internal fun PairingScreen(state: PairingState, onLook: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = stringResource(R.string.start_summary, state.newPhotos, state.alreadySafe),
+            text = stringResource(R.string.pairing_title),
             style = MaterialTheme.typography.titleMedium,
         )
-        if (state.busy) {
-            LinearProgressIndicator(
-                progress = { state.progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.start))
+        when {
+            state.code != null -> {
+                Text(text = state.code, style = MaterialTheme.typography.displaySmall)
+                Text(
+                    text = stringResource(R.string.pairing_compare),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
+            state.refused -> {
+                Text(
+                    text = stringResource(R.string.pairing_refused),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Button(onClick = onLook, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.pair))
+                }
+            }
+            else -> Button(onClick = onLook, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.pair))
+            }
+        }
+    }
+}
+
+/** What a session came to, once there is nothing left to wait for. §3.4. */
+internal data class DoneState(val sent: Long, val freed: Long, val kept: Long)
+
+@Composable
+internal fun DoneScreen(state: DoneState, onAgain: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.transfer_done, state.sent, state.freed, state.kept),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Button(onClick = onAgain, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.again))
+        }
+    }
+}
+
+/** One line, for the states that are only waiting. */
+@Composable
+internal fun WaitingScreen(message: Int, onAgain: (() -> Unit)? = null) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(text = stringResource(message), style = MaterialTheme.typography.titleMedium)
+        if (onAgain != null) {
+            Button(onClick = onAgain, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.again))
+            }
+        }
+    }
+}
+
+/**
+ * Tap one of §3.4.
+ *
+ * It says nothing about how many photographs are new, because before a session the phone does
+ * not know: that is the desktop's diff, and asking for one is what this button does. A count
+ * here would be a number the phone made up.
+ */
+@Composable
+internal fun StartScreen(onStart: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.start_ready),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.start))
         }
     }
 }
