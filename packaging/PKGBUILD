@@ -19,6 +19,11 @@ license=('GPL-3.0-or-later')
 depends=('fontconfig' 'libxkbcommon' 'sqlite' 'dbus')
 makedepends=('cargo' 'protobuf' 'git' 'gettext')
 
+# The window ships Simplified Chinese from the first commit, and a machine with no CJK font
+# renders every character of it as a box. It is a recommendation rather than a dependency
+# because an English-speaking household needs none of it.
+optdepends=('noto-fonts-cjk: to read the Simplified Chinese translation')
+
 # The identity, the index and the settings live in the user's own directories, so there is
 # nothing to back up here and nothing to migrate on upgrade.
 backup=()
