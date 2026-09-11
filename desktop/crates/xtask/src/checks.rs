@@ -101,12 +101,8 @@ pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
 /// difference.
 fn phone_tests(root: &Path) -> Result<CheckResult, String> {
     let android = root.join("android");
-    let wrapper = android.join("gradlew");
-    if !wrapper.is_file() {
-        return Ok(CheckResult::skipped(
-            "phone tests",
-            "the Gradle wrapper is not there",
-        ));
+    if let Some(missing) = gradle_missing(root) {
+        return Ok(CheckResult::skipped("phone tests", missing));
     }
 
     let passed = tools::run("./gradlew", &["--quiet", ":session:test"], &android)?;
@@ -130,8 +126,8 @@ fn phone_tests(root: &Path) -> Result<CheckResult, String> {
 /// application supports.
 fn phone_application(root: &Path) -> Result<Vec<CheckResult>, String> {
     let android = root.join("android");
-    if !android.join("gradlew").is_file() {
-        return Ok(skipped_application("the Gradle wrapper is not there"));
+    if let Some(missing) = gradle_missing(root) {
+        return Ok(skipped_application(missing));
     }
     if workspace::android_sdk(root).is_none() {
         return Ok(skipped_application(
@@ -145,6 +141,23 @@ fn phone_application(root: &Path) -> Result<Vec<CheckResult>, String> {
         checks.push(CheckResult::from_outcome(name, passed, failure));
     }
     Ok(checks)
+}
+
+/// What a Gradle build needs before it can say anything, or `None` when it has both.
+///
+/// The wrapper fetches Gradle itself, but it cannot fetch a Java runtime to run it with, and
+/// a machine set up for the desktop half alone has neither. Gradle's own words for that are
+/// "Please set the JAVA_HOME variable in your environment", which the runner would otherwise
+/// report as the phone's tests having failed --- an answer that names the wrong thing and
+/// sends the reader to the wrong half of the repository.
+fn gradle_missing(root: &Path) -> Option<&'static str> {
+    if !root.join("android/gradlew").is_file() {
+        return Some("the Gradle wrapper is not there");
+    }
+    if tools::version("java", &["--version"]).is_none() {
+        return Some("there is no Java runtime here, see docs/DEVELOPMENT.md");
+    }
+    None
 }
 
 /// One Gradle task each, so a failure names which of the three went wrong.
