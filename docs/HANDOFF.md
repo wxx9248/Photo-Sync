@@ -49,6 +49,12 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
       sending it, so anything larger than free RAM could not cross. It streams now, and a test
       holds it to that. What the test cannot show is the number: send a photograph and then a
       long video, and watch the phone's memory while it goes. (§15, §16)
+- [ ] **Closing the window leaves the desktop running.** It used to stop everything --- tray,
+      advertisement and listener --- so a phone could not find the desktop until somebody opened
+      it again. Fixed, and confirmed here by closing the window from a KWin script and watching
+      the process stay up. `R-UI-004` is deferred because nothing in the suite can close a
+      window. Close it with the mouse, then check the tray icon is still there and a phone
+      still syncs. (§17)
 - [ ] **Restart the desktop after pairing.** It read its paired phones from a path nothing
       wrote to, so it woke up knowing nobody. Fixed, and unreachable by any test, because the
       defect was in `main`. Pair a phone, quit the desktop, start it again, and check the phone
