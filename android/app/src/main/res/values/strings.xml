@@ -3,6 +3,13 @@
 <resources>
     <string name="app_name">Photo Sync</string>
 
+    <!-- Step one of §3.1. Said plainly, because a person who does not understand what is
+         being asked for is a person who says no to it. -->
+    <string name="permission_title">Photo Sync needs to see your photographs</string>
+    <string name="permission_why">It reads the camera roll to work out what the computer does not have yet. Nothing leaves this phone until you tap Start.</string>
+    <string name="permission_grant">Continue</string>
+    <string name="permission_refused">Without it there is nothing this application can do. You can grant it in Settings.</string>
+
     <!-- Tap one of §3.4. The counts are what the diff worked out. -->
     <string name="start_summary">%1$d new photos, %2$d already safe.</string>
     <string name="start">Start</string>

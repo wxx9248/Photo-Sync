@@ -2,6 +2,11 @@
 <resources>
     <string name="app_name">照片同步</string>
 
+    <string name="permission_title">照片同步需要访问你的照片</string>
+    <string name="permission_why">它会读取相机胶卷，算出电脑上还缺哪些照片。在你点击"开始"之前，不会有任何内容离开这台手机。</string>
+    <string name="permission_grant">继续</string>
+    <string name="permission_refused">没有这项权限，这个应用什么也做不了。你可以在"设置"里授予。</string>
+
     <string name="start_summary">%1$d 张新照片，%2$d 张已备份。</string>
     <string name="start">开始</string>
 

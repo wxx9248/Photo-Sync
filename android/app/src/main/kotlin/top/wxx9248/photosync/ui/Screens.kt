@@ -25,6 +25,38 @@ import top.wxx9248.photosync.R
  * decides anything; it renders what it is given and reports what was pressed.
  */
 
+/**
+ * Step one of §3.1, before anything else can be shown.
+ *
+ * A person is told what is being asked for and why before the system dialog appears, because
+ * the system's own wording says only which permission, never what for. [refused] is what they
+ * see if they have already said no: the application cannot carry on, and pretending otherwise
+ * would leave them tapping a button that does nothing.
+ */
+internal data class PermissionState(val refused: Boolean)
+
+@Composable
+internal fun PermissionScreen(state: PermissionState, onGrant: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.permission_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(
+                if (state.refused) R.string.permission_refused else R.string.permission_why
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.permission_grant))
+        }
+    }
+}
+
 /** The summary a person is shown before anything moves. §3.4, tap one. */
 internal data class StartState(
     val newPhotos: Long,
