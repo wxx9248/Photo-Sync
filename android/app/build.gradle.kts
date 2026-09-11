@@ -7,14 +7,19 @@ plugins {
 
 android {
     namespace = "top.wxx9248.photosync"
-    compileSdk = 36
+    compileSdk = 37
+
+    // AGP's default build-tools version follows the plugin, not `compileSdk`, so it asks for
+    // 36 unless it is told otherwise. Naming it here also means a machine builds with the
+    // version this project was checked against rather than whichever one it happens to hold.
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "top.wxx9248.photosync"
 
         // Android 12. The permission model in docs/SPEC.md section 3.1 starts here.
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
 

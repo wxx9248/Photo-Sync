@@ -62,7 +62,7 @@ mkdir -p ~/Android/sdk/cmdline-tools
 export ANDROID_HOME=~/Android/sdk
 yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
-    "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+    "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 ```
 
 Gradle finds the SDK through `ANDROID_HOME`, or through `android/local.properties` if you would

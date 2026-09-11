@@ -37,7 +37,7 @@ jobs:
       # packages here is what makes the build the same on a runner whose image changed.
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
 
       # Gradle downloads the wrapper, the plugins and the dependencies on a cold runner, and
       # there are now three Android tasks rather than one JVM one.
