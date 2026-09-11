@@ -12,41 +12,54 @@ msgstr ""
 "Language-Team: Photo Sync\n"
 "Language: \n"
 
+msgctxt "AppWindow"
 msgid "Photo Sync"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Phones"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "No phone is connected."
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Forget this phone"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Waiting to be filed"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Nothing is waiting."
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Commit now"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Settings"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Where photographs are kept"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Changing this moves nothing. Move the photographs yourself if you want them moved."
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Start when I log in"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Pairing"
 msgstr ""
 
+msgctxt "AppWindow"
 msgid "Check this code matches the one on the phone:"
 msgstr ""

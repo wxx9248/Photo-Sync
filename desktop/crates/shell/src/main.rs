@@ -57,7 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Both languages ship from day one on this end too, because the same family operates
     // both halves of this. `STACK.md` §3.2.
-    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/ui/translations/"));
+    let locales = locale_directory();
+    tracing::info!(locales = %locales.display(), "translations");
+    slint::init_translations!(locales);
 
     let configuration = config::directory();
     let settings = Config::load(&configuration)?;
@@ -243,6 +245,38 @@ fn row_of(phone: &Phone) -> PhoneRow {
 }
 
 /// Where the identity, the pairings and the index live. `STACK.md` §3.9.
+/// Where the compiled message catalogues are on this machine.
+///
+/// Three places, in the order they should win. A packager who says outright is obeyed; an
+/// installed desktop finds them under the standard prefix, which is where `packaging/PKGBUILD`
+/// puts them; and a checkout falls back to the ones the build compiled for it.
+///
+/// The path used to be the build machine's source directory, baked in. That directory holds
+/// no compiled catalogue and does not exist on anybody else's computer, so the window spoke
+/// English in both cases however the locale was set.
+fn locale_directory() -> std::path::PathBuf {
+    if let Some(said) = std::env::var_os("PHOTO_SYNC_LOCALE_DIR") {
+        return std::path::PathBuf::from(said);
+    }
+
+    let installed = std::path::PathBuf::from("/usr/share/locale");
+    if holds_catalogue(&installed) {
+        return installed;
+    }
+
+    std::path::PathBuf::from(env!("PHOTO_SYNC_BUILT_LOCALE_DIR"))
+}
+
+/// Whether any language under `directory` carries this application's catalogue.
+fn holds_catalogue(directory: &std::path::Path) -> bool {
+    let Ok(languages) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    languages
+        .filter_map(Result::ok)
+        .any(|language| language.path().join("LC_MESSAGES/photo-sync.mo").is_file())
+}
+
 fn data_directory() -> std::path::PathBuf {
     match std::env::var_os("XDG_DATA_HOME") {
         Some(configured) if !configured.is_empty() => std::path::PathBuf::from(configured),

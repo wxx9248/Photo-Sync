@@ -14,41 +14,54 @@ msgstr ""
 "Language-Team: Photo Sync\n"
 "Language: zh_CN\n"
 
+msgctxt "AppWindow"
 msgid "Photo Sync"
 msgstr "照片同步"
 
+msgctxt "AppWindow"
 msgid "Phones"
 msgstr "手机"
 
+msgctxt "AppWindow"
 msgid "No phone is connected."
 msgstr "没有连接手机。"
 
+msgctxt "AppWindow"
 msgid "Forget this phone"
 msgstr "取消配对"
 
+msgctxt "AppWindow"
 msgid "Waiting to be filed"
 msgstr "等待归档"
 
+msgctxt "AppWindow"
 msgid "Nothing is waiting."
 msgstr "没有等待中的照片。"
 
+msgctxt "AppWindow"
 msgid "Commit now"
 msgstr "立即归档"
 
+msgctxt "AppWindow"
 msgid "Settings"
 msgstr "设置"
 
+msgctxt "AppWindow"
 msgid "Where photographs are kept"
 msgstr "照片存放位置"
 
+msgctxt "AppWindow"
 msgid "Changing this moves nothing. Move the photographs yourself if you want them moved."
 msgstr "更改此设置不会移动任何文件。如需移动照片，请自行移动。"
 
+msgctxt "AppWindow"
 msgid "Start when I log in"
 msgstr "登录时自动启动"
 
+msgctxt "AppWindow"
 msgid "Pairing"
 msgstr "配对"
 
+msgctxt "AppWindow"
 msgid "Check this code matches the one on the phone:"
 msgstr "请核对此代码与手机上显示的是否一致："
