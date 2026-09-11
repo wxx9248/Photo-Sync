@@ -81,6 +81,7 @@ pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
     report.record(requirement_summary(root)?);
 
     if matches!(tier, Tier::Nightly) {
+        report.add(phone_device_tests(root)?);
         report.add(mutation(root)?);
         report.add(CheckResult::from_outcome(
             "self-test",
@@ -141,6 +142,55 @@ fn phone_application(root: &Path) -> Result<Vec<CheckResult>, String> {
         checks.push(CheckResult::from_outcome(name, passed, failure));
     }
     Ok(checks)
+}
+
+/// The phone's tests that need a phone, run against whatever is attached.
+///
+/// `docs/VERIFICATION.md` puts the device suite in the nightly tier, because it needs hardware
+/// or an emulator and it is minutes rather than seconds. What it checks is what MediaStore
+/// does rather than what this code does with the answer, so it cannot be faked on a desktop.
+/// A machine with nothing attached skips it and says so.
+fn phone_device_tests(root: &Path) -> Result<CheckResult, String> {
+    let android = root.join("android");
+    if let Some(missing) = gradle_missing(root) {
+        return Ok(CheckResult::skipped("phone device tests", missing));
+    }
+    if workspace::android_sdk(root).is_none() {
+        return Ok(CheckResult::skipped(
+            "phone device tests",
+            "there is no Android SDK here, see docs/DEVELOPMENT.md",
+        ));
+    }
+
+    let listing = tools::capture("adb", &["devices"], &android).unwrap_or_default();
+    if attached(&listing) == 0 {
+        return Ok(CheckResult::skipped(
+            "phone device tests",
+            "no phone or emulator is attached",
+        ));
+    }
+
+    let passed = tools::run(
+        "./gradlew",
+        &["--quiet", ":app:connectedDebugAndroidTest"],
+        &android,
+    )?;
+    Ok(CheckResult::from_outcome(
+        "phone device tests",
+        passed,
+        "the phone's platform tests failed on the attached device",
+    ))
+}
+
+/// How many devices `adb` is ready to talk to.
+///
+/// Only the ones it calls `device` count. A listing also carries a header line, and devices
+/// that are offline, unauthorised or still starting up, none of which can run a test.
+fn attached(listing: &str) -> usize {
+    listing
+        .lines()
+        .filter(|line| line.split_whitespace().nth(1) == Some("device"))
+        .count()
 }
 
 /// What a Gradle build needs before it can say anything, or `None` when it has both.
@@ -556,6 +606,31 @@ fn registry_at(root: &Path, reference: &str, path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::attached;
+
+    /// What `adb devices` prints when it is talking to one emulator and nothing else.
+    const ONE_EMULATOR: &str = "List of devices attached\nemulator-5554\tdevice\n";
+
+    #[test]
+    fn an_attached_device_is_counted() {
+        assert_eq!(attached(ONE_EMULATOR), 1);
+    }
+
+    #[test]
+    fn nothing_attached_counts_as_nothing() {
+        assert_eq!(attached("List of devices attached\n\n"), 0);
+    }
+
+    #[test]
+    fn a_device_that_cannot_run_a_test_is_not_counted() {
+        // Each of these is something `adb` lists and no test can use.
+        let listing = "List of devices attached\n\
+             emulator-5554\toffline\n\
+             10.58.8.5:39277\tunauthorized\n\
+             ZY3271\tno permissions\n";
+        assert_eq!(attached(listing), 0);
+    }
+
     use super::*;
     use crate::report::Status;
 
