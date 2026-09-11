@@ -136,6 +136,12 @@ class FakeDesktop(
 fun play(session: Session, desktop: FakeDesktop): Outcome? {
     var guard = 0
     while (session.outcome == null) {
+        // §8 stops and asks before anything is deleted. These tests are about a person who
+        // says yes; the one about saying no drives the session by hand.
+        if (session.asking != null) {
+            session.freeUp()
+            continue
+        }
         val said = session.next() ?: break
         desktop.answer(said)?.let { session.receive(it) }
         guard += 1

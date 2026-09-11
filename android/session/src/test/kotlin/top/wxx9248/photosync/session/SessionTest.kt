@@ -5,6 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import top.wxx9248.photosync.session.verification.Covers
 
@@ -26,7 +27,92 @@ private fun oneLibrary(): FakeLibrary =
 private fun saying(session: Session): Outbound =
     assertNotNull(session.next(), "the session had nothing to say")
 
+/**
+ * Drives a session as far as §8's prompt and no further.
+ *
+ * Stopping there is the point: what these tests are about is what the phone has and has not
+ * done at the moment a person is asked.
+ */
+private fun playUntilAsked(session: Session, desktop: FakeDesktop): FreeUp {
+    var guard = 0
+    while (session.asking == null && session.outcome == null) {
+        val said = session.next() ?: break
+        desktop.answer(said)?.let { session.receive(it) }
+        guard += 1
+        check(guard < 100_000) { "the session never reached the prompt" }
+    }
+    return assertNotNull(session.asking, "the session never asked before deleting")
+}
+
+/** What the phone told the desktop about the photographs it was offered. */
+private fun reported(desktop: FakeDesktop): List<DeletionOutcome> =
+    desktop.heard.filterIsInstance<Outbound.ReportDeletions>().flatMap { it.outcomes }
+
 class SessionTest {
+    @Test
+    @Covers("R-DELETE-005")
+    fun `nothing is deleted until somebody has been asked`() {
+        val library = oneLibrary()
+        val session = phone(library)
+
+        val asked = playUntilAsked(session, FakeDesktop(library))
+
+        assertTrue(
+            library.contains("DCIM/Camera/IMG_0001.jpg"),
+            "a photograph went before anybody was asked",
+        )
+        assertEquals(1, asked.fromThisTransfer)
+        assertEquals(0, asked.fromEarlier)
+        assertEquals(PHOTO.size.toLong(), asked.bytes)
+        assertNull(session.next(), "the session carried on with a person still deciding")
+    }
+
+    @Test
+    @Covers("R-DELETE-005")
+    fun `a person who says no keeps every photograph`() {
+        val library = oneLibrary()
+        val desktop = FakeDesktop(library)
+        val session = phone(library)
+        playUntilAsked(session, desktop)
+
+        session.keepThem()
+        val outcome = play(session, desktop)
+
+        val finished = assertIs<Outcome.Finished>(outcome)
+        assertEquals(0, finished.deleted)
+        assertEquals(1, finished.kept)
+        assertTrue(
+            library.contains("DCIM/Camera/IMG_0001.jpg"),
+            "the phone deleted a photograph it had been told to keep",
+        )
+        // Told, not left to be inferred from silence: §8 reports a result per file.
+        assertEquals(
+            listOf(DeletionResult.KEPT_USER),
+            reported(desktop).map { it.result },
+        )
+    }
+
+    @Test
+    @Covers("R-DELETE-005")
+    fun `saying yes is permission to check rather than permission to delete`() {
+        // The photograph changed after the desktop nominated it, so §8's gate keeps it even
+        // though a person agreed to free up space.
+        val library = oneLibrary()
+        val desktop = FakeDesktop(library)
+        val session = phone(library)
+        playUntilAsked(session, desktop)
+        library.put("DCIM/Camera/IMG_0001.jpg", MTIME + 1, "something else entirely".toByteArray())
+
+        session.freeUp()
+        val outcome = play(session, desktop)
+
+        assertEquals(0, assertIs<Outcome.Finished>(outcome).deleted)
+        assertEquals(
+            listOf(DeletionResult.KEPT_CHANGED),
+            reported(desktop).map { it.result },
+        )
+    }
+
     @Test
     fun `one photograph crosses and the phone lets go of it`() {
         val library = oneLibrary()

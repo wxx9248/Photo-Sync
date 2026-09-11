@@ -411,7 +411,7 @@ quote = "Each candidate: `(device_path, expected_sha256, size, mtime)`."
 id = "R-DELETE-005"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "The phone shows **one prompt**"
 
 [[requirement]]

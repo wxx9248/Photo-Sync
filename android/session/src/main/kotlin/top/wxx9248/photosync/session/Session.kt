@@ -27,7 +27,6 @@ class Session(
     private var wanted: List<ToSend> = emptyList()
     private var sending: Int = 0
     private var offset: Long = 0
-    private var candidates: List<DeletionCandidate> = emptyList()
 
     /** What became of the session, once there is an answer. */
     var outcome: Outcome? = null
@@ -43,7 +42,51 @@ class Session(
         is Phase.Sending -> sending(here)
         Phase.Finishing -> Outbound.Finish
         is Phase.Deleting -> Outbound.ReportDeletions(here.outcomes)
+        // Nothing to say while a person is being asked. §8 stops here until they answer.
+        is Phase.Asking -> null
         Phase.Waiting, Phase.Done -> null
+    }
+
+    /**
+     * What a person is being asked, or null when nothing is waiting on them.
+     *
+     * §8 allows exactly one prompt, and this is what it says: how much can be freed, split
+     * between what crossed just now and what an earlier session had already stored.
+     */
+    val asking: FreeUp?
+        get() = (phase as? Phase.Asking)?.let { here ->
+            FreeUp(
+                fromThisTransfer = here.candidates.count {
+                    it.origin == CandidateOrigin.THIS_TRANSFER
+                },
+                fromEarlier = here.candidates.count { it.origin == CandidateOrigin.EARLIER },
+                bytes = here.candidates.sumOf { it.size },
+            )
+        }
+
+    /**
+     * The person said yes, so §8's gates decide the rest.
+     *
+     * Saying yes is permission to check, not permission to delete: every candidate still has
+     * to prove itself against the copy the desktop claims to hold, and anything that cannot is
+     * kept and reported.
+     */
+    fun freeUp() {
+        val here = phase as? Phase.Asking ?: return
+        phase = Phase.Deleting(carryOut(here.candidates))
+    }
+
+    /**
+     * The person said no, so every photograph stays and the desktop is told why.
+     *
+     * The desktop is told rather than left to infer it from silence: §8 has the phone report
+     * per-file results, and "the person declined" is a result like any other.
+     */
+    fun keepThem() {
+        val here = phase as? Phase.Asking ?: return
+        phase = Phase.Deleting(
+            here.candidates.map { DeletionOutcome(it.path, DeletionResult.KEPT_USER) }
+        )
     }
 
     /** Takes what the desktop said, and moves on. */
@@ -73,10 +116,9 @@ class Session(
                 sending += 1
                 phase = if (sending < wanted.size) openNext() else Phase.Finishing
             }
-            is Inbound.Candidates -> {
-                candidates = inbound.candidates
-                phase = Phase.Deleting(carryOut(candidates))
-            }
+            // Nothing is deleted here. §8 puts one prompt between the desktop's list and the
+            // phone acting on it, and `asking` is what that prompt is built from.
+            is Inbound.Candidates -> phase = Phase.Asking(inbound.candidates)
             is Inbound.SessionFinished -> {
                 outcome = Outcome.Finished(
                     sent = inbound.sent,
@@ -148,6 +190,7 @@ class Session(
         data object Diffing : Phase
         data class Sending(val opened: Boolean) : Phase
         data object Waiting : Phase
+        data class Asking(val candidates: List<DeletionCandidate>) : Phase
         data object Finishing : Phase
         data class Deleting(val outcomes: List<DeletionOutcome>) : Phase
         data object Done : Phase
@@ -158,6 +201,18 @@ class Session(
         const val PROTOCOL_VERSION: Int = 1
     }
 }
+
+/**
+ * The one question §8 allows the phone to ask.
+ *
+ * The split is what makes the number believable: "from this transfer" is what crossed minutes
+ * ago, "from earlier" is what an older session stored and the phone is about to re-prove.
+ */
+data class FreeUp(
+    val fromThisTransfer: Int,
+    val fromEarlier: Int,
+    val bytes: Long,
+)
 
 /** How a session ended. */
 sealed interface Outcome {
