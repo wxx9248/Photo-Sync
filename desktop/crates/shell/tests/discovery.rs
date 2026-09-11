@@ -32,12 +32,24 @@ fn a_phone_finds_the_desktop_without_being_told_where_it_is() {
         Err(error) => panic!("cannot browse: {error}"),
     };
 
+    // The one this test published, not merely the first to answer. A developer's own desktop
+    // is on the same network and advertises the same service --- §4 has it autostart, so that
+    // is the ordinary state of a machine this runs on --- and a test that took whatever
+    // arrived first would fail on exactly the machines the application is meant to be running
+    // on.
     let deadline = std::time::Instant::now() + PATIENCE;
     let resolved = loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
-        assert!(!left.is_zero(), "nothing answered in {PATIENCE:?}");
+        assert!(
+            !left.is_zero(),
+            "this desktop did not answer in {PATIENCE:?}"
+        );
         match found.recv_timeout(left) {
-            Ok(ServiceEvent::ServiceResolved(service)) => break service,
+            Ok(ServiceEvent::ServiceResolved(service)) => {
+                if service.get_fullname().starts_with("Kitchen iMac.") {
+                    break service;
+                }
+            }
             Ok(_) => continue,
             Err(error) => panic!("the browse ended: {error}"),
         }
