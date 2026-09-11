@@ -206,28 +206,28 @@ quote = "Staging lives at **`<vault>/.staging/<deviceID>/`** — same filesystem
 id = "R-NAME-001"
 section = "§7.2"
 area = "NAME"
-status = "deferred"
+status = "active"
 quote = "Format: **`yyyy-MM-dd_HHmmss[_n].<ext>`**"
 
 [[requirement]]
 id = "R-NAME-002"
 section = "§7.2"
 area = "NAME"
-status = "deferred"
+status = "active"
 quote = "`_n` (n ≥ 1) resolves collisions against existing vault names and within the batch"
 
 [[requirement]]
 id = "R-NAME-003"
 section = "§7.2"
 area = "NAME"
-status = "deferred"
+status = "active"
 quote = "Sanity check: a year < 2000 or in the future falls through to the next source."
 
 [[requirement]]
 id = "R-NAME-004"
 section = "§7.2"
 area = "NAME"
-status = "deferred"
+status = "active"
 quote = "Terminal fallback: the import time (desktop clock at commit)."
 
 [[requirement]]
