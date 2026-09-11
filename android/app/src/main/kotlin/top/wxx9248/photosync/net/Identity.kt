@@ -7,7 +7,10 @@ import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
+import java.util.Calendar
 import java.util.Date
+import java.util.GregorianCalendar
+import java.util.TimeZone
 import javax.security.auth.x500.X500Principal
 
 /**
@@ -35,6 +38,23 @@ internal class Identity private constructor(
     companion object {
         private const val KEYSTORE = "AndroidKeyStore"
 
+        private val EPOCH = Date(0)
+
+        /**
+         * As far off as a certificate can say.
+         *
+         * `Long.MAX_VALUE` milliseconds is the year 292 million, which X.509 has no way to
+         * write down. The keystore refuses the whole key rather than the one field, so a
+         * phone asking for an identity got none at all and could do nothing: not pair, not
+         * connect, not send a photograph. The last year the encoding allows says the same
+         * thing and can be encoded.
+         */
+        private val FOREVER: Date =
+            GregorianCalendar(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(9999, Calendar.DECEMBER, 31, 23, 59, 59)
+            }.time
+
         /** The one name this phone's key is stored and asked for under. */
         const val ALIAS: String = "photo-sync-device"
 
@@ -56,8 +76,8 @@ internal class Identity private constructor(
                     .setCertificateSerialNumber(BigInteger.ONE)
                     // Dates nothing checks, because §5.2 pins the key rather than trusting a
                     // certificate. A phone whose clock is wrong still syncs.
-                    .setCertificateNotBefore(Date(0))
-                    .setCertificateNotAfter(Date(Long.MAX_VALUE))
+                    .setCertificateNotBefore(EPOCH)
+                    .setCertificateNotAfter(FOREVER)
                     .setKeySize(256)
                     .build()
             )
