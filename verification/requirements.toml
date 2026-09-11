@@ -12,14 +12,14 @@
 id = "R-CATALOG-001"
 section = "§3.2"
 area = "CATALOG"
-status = "deferred"
+status = "active"
 quote = "the **`DCIM/Camera` bucket only**, images + videos, enumerated via MediaStore"
 
 [[requirement]]
 id = "R-CATALOG-002"
 section = "§3.2"
 area = "CATALOG"
-status = "deferred"
+status = "active"
 quote = "Excluded: `IS_PENDING` items"
 
 [[requirement]]

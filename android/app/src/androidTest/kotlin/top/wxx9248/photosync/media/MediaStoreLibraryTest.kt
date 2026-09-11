@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import top.wxx9248.photosync.session.DevicePath
+import top.wxx9248.photosync.session.verification.Covers
 
 /**
  * The platform surface of `SPEC.md` §3.2, against a real MediaStore.
@@ -59,6 +60,7 @@ class MediaStoreLibraryTest {
     }
 
     @Test
+    @Covers("R-CATALOG-001")
     fun the_camera_bucket_is_what_is_offered_and_nothing_else() {
         val photograph = "photo-sync-test-${System.nanoTime()}.jpg"
         val elsewhere = "photo-sync-other-${System.nanoTime()}.jpg"
@@ -76,6 +78,7 @@ class MediaStoreLibraryTest {
     }
 
     @Test
+    @Covers("R-CATALOG-002")
     fun a_file_still_being_written_is_not_offered() {
         val recording = "photo-sync-pending-${System.nanoTime()}.jpg"
         val uri = insert(recording, "DCIM/Camera/", pending = true, bytes = ByteArray(8))
