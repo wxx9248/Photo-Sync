@@ -63,3 +63,11 @@ msgstr ""
 msgctxt "AppWindow"
 msgid "Check this code matches the one on the phone:"
 msgstr ""
+
+msgctxt "AppWindow"
+msgid "They match"
+msgstr ""
+
+msgctxt "AppWindow"
+msgid "They do not"
+msgstr ""

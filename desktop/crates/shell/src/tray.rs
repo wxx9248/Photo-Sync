@@ -18,6 +18,10 @@ pub enum Asked {
     /// Bring the window up.
     Open,
 
+    /// Open up to a phone that is not paired yet. §5.2 makes this deliberate: the desktop
+    /// accepts an unknown key only while a person has asked it to.
+    Pair,
+
     /// Leave. The transfers stop with it, which is why it is a menu item rather than a
     /// click: closing the window should not do this by accident.
     Quit,
@@ -77,6 +81,14 @@ impl ksni::Tray for Tray {
                 label: "Open Photo Sync".to_string(),
                 activate: Box::new(|tray: &mut Self| {
                     let _ = tray.asked.send(Asked::Open);
+                }),
+                ..StandardItem::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Pair a new phone".to_string(),
+                activate: Box::new(|tray: &mut Self| {
+                    let _ = tray.asked.send(Asked::Pair);
                 }),
                 ..StandardItem::default()
             }

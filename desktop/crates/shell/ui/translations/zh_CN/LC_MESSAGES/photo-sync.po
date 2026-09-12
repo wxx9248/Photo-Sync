@@ -65,3 +65,11 @@ msgstr "配对"
 msgctxt "AppWindow"
 msgid "Check this code matches the one on the phone:"
 msgstr "请核对此代码与手机上显示的是否一致："
+
+msgctxt "AppWindow"
+msgid "They match"
+msgstr "确认一致"
+
+msgctxt "AppWindow"
+msgid "They do not"
+msgstr "不一致"

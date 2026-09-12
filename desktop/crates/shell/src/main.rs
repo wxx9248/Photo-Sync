@@ -47,7 +47,14 @@ use window::{AppWindow, PhoneRow, StagedRow};
 
 /// The port is asked for by the operating system and announced over mDNS, so nothing has to
 /// agree on a number in advance.
-const ANY_PORT: &str = "0.0.0.0:0";
+/// Every address this machine has, on a port it chooses.
+///
+/// `[::]` rather than `0.0.0.0`, because the responder advertises every address the machine
+/// holds and a phone picks one of them. A desktop bound to IPv4 alone that advertised an IPv6
+/// address was a desktop the phone found and could not reach --- and, since nothing ever
+/// arrived, one that had nothing to say about why. Linux accepts IPv4 on an IPv6 socket
+/// unless `bindv6only` is set, so this listens for both.
+const ANY_PORT: &str = "[::]:0";
 
 /// How often the window catches up with what the desktop has been doing.
 const REFRESH: std::time::Duration = std::time::Duration::from_millis(500);
@@ -87,11 +94,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // is where a windowing system insists its event loop runs.
     let runtime = tokio::runtime::Runtime::new()?;
     let address: SocketAddr = ANY_PORT.parse()?;
+    // One window, shared: the tray opens it, the pairing service shows a code in it, and the
+    // person answers through it. `PairingWindow::closed()` here meant the desktop could never
+    // meet a phone it did not already know.
+    let pairing = PairingWindow::closed();
     let listening = runtime.block_on(listen(
         address,
         Arc::clone(&identity),
         Arc::clone(&paired),
-        PairingWindow::closed(),
+        pairing.clone(),
         Arc::clone(&desk),
         &settings.name,
         &data,
@@ -123,10 +134,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     wire(&window, &configuration, &settings, &desk, &runtime);
 
+    // §5.2 asks a person whether two screens match, and this is where their answer lands.
+    let agreeing = pairing.clone();
+    window.on_pair_confirmed(move || {
+        agreeing.confirm();
+        agreeing.close();
+    });
+    let refusing = pairing.clone();
+    window.on_pair_rejected(move || {
+        refusing.reject();
+        refusing.close();
+    });
+
     // What the desktop has been doing, brought over to the window at a human pace rather
     // than on every event: a transfer produces thousands of them a second.
     let refreshing = window.as_weak();
     let watching = Arc::clone(&desk);
+    let showing = pairing.clone();
     let ticking = runtime.handle().clone();
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, REFRESH, move || {
@@ -137,17 +161,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window.set_phones(ModelRc::new(VecModel::from(
             shown.iter().map(row_of).collect::<Vec<_>>(),
         )));
+        // The code appears while a phone is waiting on an answer, and goes when it is given.
+        window.set_pairing_code(showing.showing().unwrap_or_default().into());
     });
 
     // A tray click has to reach the window, which only the windowing thread may touch.
     let opening = window.as_weak();
+    let opening_pairing = pairing.clone();
     std::thread::spawn(move || {
         while let Ok(what) = asks.recv() {
             let opening = opening.clone();
+            let opening_pairing = opening_pairing.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(window) = opening.upgrade() {
                     match what {
                         Asked::Open => {
+                            let _ = window.show();
+                        }
+                        Asked::Pair => {
+                            // The window has to be up, because the code appears in it and
+                            // somebody has to read it.
+                            opening_pairing.open();
+                            tracing::info!("open to a phone that is not paired yet");
                             let _ = window.show();
                         }
                         Asked::Quit => {

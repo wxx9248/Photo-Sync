@@ -37,6 +37,11 @@ export component AppWindow inherits Window {
     callback autostart-changed(bool);
     callback forget-phone(string);
 
+    // §5.2 is a person comparing two screens and saying whether they match. Both answers are
+    // offered, because "no" is the one that matters: it is somebody standing in the middle.
+    callback pair-confirmed();
+    callback pair-rejected();
+
     VerticalBox {
         GroupBox {
             title: @tr("Phones");
@@ -102,6 +107,17 @@ export component AppWindow inherits Window {
             VerticalBox {
                 Text { text: @tr("Check this code matches the one on the phone:"); }
                 Text { text: pairing-code; font-size: 28px; font-weight: 700; }
+                HorizontalBox {
+                    Button {
+                        text: @tr("They match");
+                        primary: true;
+                        clicked => { root.pair-confirmed(); }
+                    }
+                    Button {
+                        text: @tr("They do not");
+                        clicked => { root.pair-rejected(); }
+                    }
+                }
             }
         }
     }

@@ -146,7 +146,15 @@ impl ClientCertVerifier for PinnedPhones {
         };
         match admit(&paired, self.pairing.is_open(), end_entity) {
             Admission::Known(_) | Admission::Offered { .. } => Ok(ClientCertVerified::assertion()),
-            Admission::Refused => Err(refused("this phone is not paired with this desktop")),
+            Admission::Refused => {
+                // Said out loud, because the phone is told only that the connection failed.
+                // Somebody watching two screens and no explanation has nothing to go on.
+                tracing::warn!(
+                    pairing_open = self.pairing.is_open(),
+                    "a phone this desktop does not know was turned away"
+                );
+                Err(refused("this phone is not paired with this desktop"))
+            }
         }
     }
 
