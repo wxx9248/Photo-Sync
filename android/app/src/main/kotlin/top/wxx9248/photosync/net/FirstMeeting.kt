@@ -29,7 +29,9 @@ internal class FirstMeeting(
 
         return coroutineScope {
             GrpcPairing.connect(address, identity, this).use { meeting ->
-                show(meeting.offer(DeviceId(identity.publicKeyPin().take(16)), deviceName))
+                val code = meeting.offer(DeviceId(identity.publicKeyPin().take(16)), deviceName)
+                    ?: return@use Meeting.NotOpen
+                show(code)
                 meeting.settled()?.let(Meeting::Paired) ?: Meeting.Refused
             }
         }
@@ -49,6 +51,14 @@ internal sealed interface Meeting {
 
     /** A desktop answered and the person at it declined. */
     data object Refused : Meeting
+
+    /**
+     * A desktop is there and would not talk to a phone it does not know.
+     *
+     * §5.2 only accepts an unknown key while somebody has opened pairing at the desktop, so
+     * this is nearly always "nobody has opened it yet" rather than anything wrong.
+     */
+    data object NotOpen : Meeting
 
     data class Paired(val desktop: PairedDesktop) : Meeting
 }

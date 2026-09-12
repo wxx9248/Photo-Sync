@@ -1,5 +1,6 @@
 package top.wxx9248.photosync.net
 
+import android.util.Log
 import io.grpc.ManagedChannel
 import io.grpc.okhttp.OkHttpChannelBuilder
 import java.net.InetSocketAddress
@@ -60,12 +61,28 @@ internal class GrpcPairing private constructor(
      * answers: §5.2 has a person compare two screens, and they cannot compare what is not yet
      * shown.
      */
-    suspend fun offer(device: DeviceId, name: String): String {
-        val asked = asking.async { pair(device, name) }
+    suspend fun offer(device: DeviceId, name: String): String? {
+        val asked = asking.async {
+            try {
+                pair(device, name)
+            } catch (failure: Exception) {
+                // A call that falls over before the handshake means no certificate is coming.
+                // Without this the wait below never ends: the failure would sit unobserved in
+                // the deferred while a person watched "looking for the computer" forever.
+                presented.completeExceptionally(failure)
+                throw failure
+            }
+        }
         answer = asked
 
         // The certificate arrives with the handshake, which the call above starts.
-        val desktop = presented.await()
+        val desktop = try {
+            presented.await()
+        } catch (failure: Exception) {
+            coroutineContext.ensureActive()
+            Log.w(TAG, "the desktop would not talk to an unknown phone", failure)
+            return null
+        }
         return PairingCode.of(desktop.publicKey.encoded, identity.certificate.publicKey.encoded)
     }
 
@@ -131,6 +148,8 @@ internal class GrpcPairing private constructor(
     }
 
     companion object {
+        private const val TAG = "PhotoSyncPairing"
+
         /**
          * Opens the one connection this phone makes to a desktop it cannot yet recognise.
          *

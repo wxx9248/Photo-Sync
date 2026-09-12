@@ -112,6 +112,10 @@ class MainActivity : ComponentActivity() {
 
         when {
             looking && code == null -> WaitingScreen(R.string.pairing_looking)
+            ended is Meeting.NotOpen -> WaitingScreen(R.string.pairing_not_open) {
+                ended = null
+                looking = true
+            }
             ended is Meeting.NoDesktop -> WaitingScreen(R.string.no_desktop) {
                 ended = null
                 looking = true

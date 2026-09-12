@@ -19,6 +19,7 @@
     <string name="pair">Look for the computer</string>
 
     <!-- What §5.1 calls the "is the computer on?" case, which is not an error. -->
+    <string name="pairing_not_open">The computer is there but is not expecting a new phone. On the computer, open the Photo Sync tray menu and choose "Pair a new phone", then try again.</string>
     <string name="no_desktop">The computer did not answer. Is it switched on and on the same network?</string>
 
     <string name="transfer_working">Working…</string>
