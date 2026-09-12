@@ -1,6 +1,7 @@
 package top.wxx9248.photosync.net
 
 import android.content.Context
+import android.util.Log
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
@@ -33,14 +34,18 @@ internal class Discovery(context: Context) {
      * something §5.1 handles: the phone is paired with one key, and connecting to the wrong
      * one fails the pinning check rather than doing anything worse.
      */
-    suspend fun find(timeout: Duration = LONG_ENOUGH): InetSocketAddress? =
-        withTimeoutOrNull(timeout) {
+    suspend fun find(timeout: Duration = LONG_ENOUGH): InetSocketAddress? {
+        val found = withTimeoutOrNull(timeout) {
             suspendCancellableCoroutine { waiting ->
                 val looking = FirstDesktop(waiting)
+                Log.i(TAG, "looking for $SERVICE_TYPE for $timeout")
                 manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, looking)
                 waiting.invokeOnCancellation { looking.answer(null) }
             }
         }
+        Log.i(TAG, if (found == null) "no desktop answered" else "found a desktop at $found")
+        return found
+    }
 
     /**
      * One attempt: the first desktop that resolves, and nothing after it.
@@ -52,7 +57,7 @@ internal class Discovery(context: Context) {
      */
     private inner class FirstDesktop(
         private val waiting: CancellableContinuation<InetSocketAddress?>,
-    ) : NsdManager.DiscoveryListener, NsdManager.ResolveListener {
+    ) : NsdManager.DiscoveryListener {
         private val answered = AtomicBoolean(false)
 
         fun answer(address: InetSocketAddress?) {
@@ -69,20 +74,33 @@ internal class Discovery(context: Context) {
 
         override fun onServiceLost(service: NsdServiceInfo?) = Unit
 
-        override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) = answer(null)
-
-        override fun onServiceFound(service: NsdServiceInfo?) {
-            manager.resolveService(service ?: return, this)
+        override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
+            Log.w(TAG, "discovery would not start: $errorCode")
+            answer(null)
         }
 
-        // A service that will not resolve is one desktop of possibly several. The search
-        // carries on until something resolves or the timeout ends it.
-        override fun onResolveFailed(info: NsdServiceInfo?, errorCode: Int) = Unit
+        override fun onServiceFound(service: NsdServiceInfo?) {
+            Log.i(TAG, "found ${service?.serviceName}")
+            manager.resolveService(service ?: return, resolver())
+        }
 
-        override fun onServiceResolved(info: NsdServiceInfo?) {
-            val resolved = info ?: return
-            val host = resolved.address ?: return
-            answer(InetSocketAddress(host, resolved.port))
+        /**
+         * A listener per service, because NsdManager refuses one that is already resolving.
+         *
+         * A home network answers more than once --- two desktops, or one announcing itself
+         * again --- and reusing a single listener throws `IllegalArgumentException` on the
+         * system's own thread, which takes the application down with it.
+         */
+        private fun resolver() = object : NsdManager.ResolveListener {
+            // A service that will not resolve is one desktop of possibly several. The search
+            // carries on until something resolves or the timeout ends it.
+            override fun onResolveFailed(info: NsdServiceInfo?, errorCode: Int) = Unit
+
+            override fun onServiceResolved(info: NsdServiceInfo?) {
+                val resolved = info ?: return
+                val host = resolved.address ?: return
+                answer(InetSocketAddress(host, resolved.port))
+            }
         }
     }
 
@@ -102,6 +120,8 @@ internal class Discovery(context: Context) {
                 @Suppress("DEPRECATION")
                 host
             }
+
+        private const val TAG = "PhotoSyncDiscovery"
 
         /** What the desktop advertises. Fixed by §5.1 and matched exactly. */
         const val SERVICE_TYPE: String = "_photosync._tcp"
