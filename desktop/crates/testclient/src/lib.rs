@@ -509,3 +509,87 @@ pub fn pair(
         runtime: runtime.clone(),
     })
 }
+
+/// What the desktop tells a connection each of its streams may hold, in bytes.
+///
+/// Read from the desktop's own `SETTINGS` frame rather than from the code that configured it.
+/// `STACK.md` §3.6 raises this from HTTP/2's 65,535-byte default because that default caps one
+/// stream at the window divided by the round-trip time; a silent return to it would look like
+/// a slow network rather than like a defect, which is exactly the kind of regression
+/// `docs/VERIFICATION.md` §5 asks to be asserted rather than assumed.
+///
+/// # Errors
+/// When the desktop cannot be reached, refuses the connection, or says nothing about the
+/// window before its first frames are done.
+pub fn stream_window_of(
+    runtime: &Handle,
+    address: SocketAddr,
+    identity: &Identity,
+    desktop_key: &[u8],
+) -> Result<u32, String> {
+    /// What a client sends before anything else, so a server knows it speaks HTTP/2. RFC 9113
+    /// §3.4.
+    const PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    /// The frame type of `SETTINGS`, and the identifier of the one setting wanted here.
+    const SETTINGS: u8 = 0x4;
+    const INITIAL_WINDOW_SIZE: u16 = 0x4;
+    const ACK: u8 = 0x1;
+
+    let config = client_config(identity, desktop_key).map_err(|error| error.to_string())?;
+    let connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
+
+    runtime.block_on(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let socket = tokio::net::TcpStream::connect(address)
+            .await
+            .map_err(|error| format!("cannot reach the desktop: {error}"))?;
+        let mut stream = connector
+            .connect(rustls_name(), socket)
+            .await
+            .map_err(|error| format!("the desktop would not finish the handshake: {error}"))?;
+
+        // The preface and an empty `SETTINGS` of our own, which is what any HTTP/2 client
+        // opens with. The server's own settings arrive without being asked for.
+        stream
+            .write_all(PREFACE)
+            .await
+            .map_err(|error| error.to_string())?;
+        stream
+            .write_all(&[0, 0, 0, SETTINGS, 0, 0, 0, 0, 0])
+            .await
+            .map_err(|error| error.to_string())?;
+
+        // Its first few frames, until one of them says. Anything that is not a settings frame
+        // belongs to connection set-up and is read past.
+        for _ in 0..8 {
+            let mut header = [0_u8; 9];
+            stream
+                .read_exact(&mut header)
+                .await
+                .map_err(|error| format!("the desktop stopped talking: {error}"))?;
+            let length =
+                usize::from(header[0]) << 16 | usize::from(header[1]) << 8 | usize::from(header[2]);
+            let mut payload = vec![0_u8; length];
+            stream
+                .read_exact(&mut payload)
+                .await
+                .map_err(|error| format!("a frame ended early: {error}"))?;
+
+            if header[3] != SETTINGS || header[4] & ACK != 0 {
+                continue;
+            }
+            // Every setting is a two-byte identifier and a four-byte value. RFC 9113 §6.5.1.
+            for setting in payload.as_chunks::<6>().0 {
+                let named = u16::from_be_bytes([setting[0], setting[1]]);
+                if named == INITIAL_WINDOW_SIZE {
+                    return Ok(u32::from_be_bytes([
+                        setting[2], setting[3], setting[4], setting[5],
+                    ]));
+                }
+            }
+        }
+
+        Err("the desktop never said what its stream window is".to_string())
+    })
+}

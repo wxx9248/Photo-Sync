@@ -25,6 +25,14 @@ use crate::tls::{PairingWindow, server_config};
 use photo_sync_protocol::v1::pairing_server::PairingServer;
 use photo_sync_protocol::v1::photo_sync_server::PhotoSyncServer;
 
+/// How large a window each HTTP/2 stream is offered, in bytes. `STACK.md` §3.6.
+///
+/// The default of 65,535 bytes limits one stream to that divided by the round-trip time,
+/// which on a few milliseconds of Wi-Fi is a small fraction of the link. The phone asks for
+/// the same number, and `docs/VERIFICATION.md` §5 wants both halves asserted rather than
+/// assumed, because a silent return to the default looks like a slow network.
+pub const WINDOW_BYTES: u32 = 8 * 1024 * 1024;
+
 /// A connection, and the key that got it in.
 pub struct PinnedStream {
     inner: TlsStream<TcpStream>,
@@ -148,6 +156,12 @@ pub async fn listen(
     let serving = tokio::spawn(async move {
         let incoming = tokio_stream::wrappers::ReceiverStream::new(incoming);
         let _ = tonic::transport::Server::builder()
+            // `STACK.md` §3.6. HTTP/2's default window is 65,535 bytes, which caps a stream
+            // at that divided by the round-trip time --- on a home Wi-Fi network, far below
+            // the link. The phone asks for the same number on each of its connections, and
+            // adaptive sizing lets a fast link grow past it.
+            .initial_stream_window_size(Some(WINDOW_BYTES))
+            .initial_connection_window_size(Some(WINDOW_BYTES))
             .add_service(PhotoSyncServer::new(sync))
             .add_service(PairingServer::new(meeting))
             .serve_with_incoming(incoming)

@@ -348,8 +348,10 @@ no standing to certify anything. The sabotage set grows with every real bug foun
 Two kinds, kept apart because they fail differently:
 
 * **Deterministic assertions (gated).** The HTTP/2 flow-control window, channel-pool size, and
-  chunk size are asserted against the values `STACK.md` §3.6 fixes, including a check on the
-  actual `SETTINGS` frame observed by the real-bytes test. A regression here is a silent
+  chunk size are asserted against the values `STACK.md` §3.6 fixes. The window is read from the
+  `SETTINGS` frame the desktop actually sends, by a client in the real-bytes test that speaks
+  enough HTTP/2 to ask; the pool size is asserted on the phone, where the session's lane count
+  and the driver's connection count are the same decision. A regression here is a silent
   throughput collapse, and this catches it without depending on machine speed.
 * **Tracked metrics (not gated).** Loopback throughput for a synthetic 2 GB transfer with
   hashing in the path, catalog diff time for a 50,000-entry library, and commit time for a

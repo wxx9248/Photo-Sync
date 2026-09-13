@@ -203,8 +203,12 @@ build time.
   read from request extensions, so no RPC has to trust a device ID sent in a message body.
 * **Flow control is set explicitly.** HTTP/2's default 65,535-byte window caps throughput at
   `window / RTT`, which on a multi-millisecond Wi-Fi RTT is far below link speed. The server
-  sets an 8 MB initial stream window with adaptive sizing enabled; the phone sets the matching
-  value on its channels.
+  sets an 8 MB initial stream and connection window; the phone sets the matching value on each
+  of its channels. Adaptive sizing is off: hyper's adaptive control does not grow from a
+  configured window but replaces it, starting again at 65,535 — the very number this is here to
+  get away from. It was switched on first and the SETTINGS frame said so. A home network's
+  bandwidth-delay product is a few hundred kilobytes, so a fixed window well above it has
+  nothing to gain from being estimated.
 * **Concurrency is N connections, not N streams on one connection.** A pool of four channels
   each carry one `UploadFile` at a time. A single TCP connection multiplexing all uploads would
   make one lost segment stall every file behind it, and would share one congestion window;

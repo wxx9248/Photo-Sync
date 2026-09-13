@@ -411,3 +411,28 @@ fn a_desktop_key_that_changed_is_never_trusted_silently() {
     );
     assert!(vault_files(&scratch).is_empty());
 }
+
+/// `STACK.md` §3.6's window, read off the wire rather than out of the code that set it.
+///
+/// `docs/VERIFICATION.md` §5 puts this among the deterministic assertions because the failure
+/// it guards against is silent: a desktop that fell back to HTTP/2's 65,535-byte default is a
+/// desktop whose transfers are slow for a reason no test that watches behaviour can see.
+#[test]
+fn the_desktop_offers_each_stream_the_window_the_stack_document_fixes() {
+    covers!("R-XFER-006");
+    let scratch = Scratch::new();
+    let phone = Phone::new("phone-a", "Kitchen phone");
+    let known = known(&scratch, &phone);
+
+    let window = match photo_sync_testclient::stream_window_of(
+        known.desktop.runtime.handle(),
+        known.desktop.address,
+        &known.phone_identity,
+        known.desktop_identity.public_key(),
+    ) {
+        Ok(window) => window,
+        Err(error) => panic!("cannot read the desktop's settings: {error}"),
+    };
+
+    assert_eq!(window, 8 * 1024 * 1024, "the window is {window} bytes");
+}
