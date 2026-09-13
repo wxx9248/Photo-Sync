@@ -87,19 +87,26 @@ internal class GrpcPairing private constructor(
     }
 
     /**
-     * Waits for the person at the desktop, and hands back what to remember if they agreed.
+     * Waits for the person at the desktop, and says how it ended.
      *
-     * Null covers both a refusal and a connection that went away, because neither is a desktop
-     * this phone may talk to again and the difference is not one the phone can act on.
+     * A refusal here means a person at the desktop said no. Anything else --- the call turned
+     * away, the handshake finished and then dropped --- means the desktop is not open to a
+     * phone it does not know, which sends somebody to open pairing rather than to wonder what
+     * they did wrong.
      */
-    suspend fun settled(): PairedDesktop? {
-        val asked = answer ?: return null
+    suspend fun settled(): Meeting {
+        val asked = answer ?: return Meeting.Refused
         return try {
-            asked.await()
+            asked.await()?.let(Meeting::Paired) ?: Meeting.Refused
         } catch (failure: Exception) {
             coroutineContext.ensureActive()
             Log.w(TAG, "the desktop did not finish pairing", failure)
-            null
+            // The desktop answered at the transport and then would not go on, which on this
+            // protocol means one thing: it is not open to a phone it does not know. A phone
+            // whose key it has never seen is turned away as the handshake finishes, and a
+            // desktop nobody has opened for pairing refuses the call itself. Both send a
+            // person to the same place.
+            Meeting.NotOpen
         }
     }
 

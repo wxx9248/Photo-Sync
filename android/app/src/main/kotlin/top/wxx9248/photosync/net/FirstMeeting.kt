@@ -30,9 +30,12 @@ internal class FirstMeeting(
         return coroutineScope {
             GrpcPairing.connect(address, identity, this).use { meeting ->
                 val code = meeting.offer(DeviceId(identity.publicKeyPin().take(16)), deviceName)
-                    ?: return@use Meeting.NotOpen
-                show(code)
-                meeting.settled()?.let(Meeting::Paired) ?: Meeting.Refused
+                if (code == null) {
+                    Meeting.NotOpen
+                } else {
+                    show(code)
+                    meeting.settled()
+                }
             }
         }
     }
