@@ -153,7 +153,7 @@ class MainActivity : ComponentActivity() {
         // Step four: the settings only this phone's manufacturer knows about. Nothing can be
         // granted here, so it is shown once and remembered --- a person who has read it should
         // not be shown it again every time they open the application.
-        val steps = remember { KeepAlive.brandSteps() }
+        val steps = remember { KeepAlive.brandSteps(this) }
         var readTheSteps by remember {
             mutableStateOf(onboarding.asked(Onboarding.Step.BRAND_STEPS))
         }

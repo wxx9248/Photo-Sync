@@ -72,6 +72,11 @@ Every phone below kills background applications more aggressively than Android r
 transfer survives the screen going off *only* if these are set. The onboarding flow shows the
 same steps with pictures; this table is for looking up afterwards.
 
+The row is chosen by the system, not by the name on the phone: the application looks for the
+manufacturer's own power manager --- the application these steps walk through --- and shows
+nothing when it is not there. A handset from one of these makers running a community build of
+Android is the last row.
+
 | Brand | System | What to set |
 |---|---|---|
 | Xiaomi, Redmi, POCO | MIUI, HyperOS | Settings → Apps → Photo Sync → **Autostart** on; **Battery saver** → No restrictions; in Recents, pull the card down and **lock** it |

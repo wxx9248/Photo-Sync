@@ -2,6 +2,7 @@ package top.wxx9248.photosync.media
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -45,17 +46,67 @@ internal object KeepAlive {
         )
 
     /**
-     * What this phone's manufacturer needs beyond the exemption, or null when it needs nothing.
+     * What this phone's system software needs beyond the exemption, or null when it needs
+     * nothing.
      *
      * The same steps as the table in `docs/INSTALL.md`, which is where somebody looks them up
-     * afterwards. Stock Android is not in the list because the exemption is enough there.
+     * afterwards, and that table is keyed the way `SPEC.md` §3.1 names them: by the system ---
+     * MIUI, ColorOS, One UI --- rather than by whose name is on the back of the phone. The two
+     * come apart. A Xiaomi handset running a community build of Android still reports a
+     * `Build.MANUFACTURER` of "Xiaomi" and has no Autostart screen to send anybody to, and
+     * steps for a menu that is not there are worse than none: they tell a person their
+     * transfer will stop unless they change a setting they cannot find.
+     *
+     * So the question asked here is whether the manufacturer's own power manager is installed,
+     * which is the application those steps walk through.
      */
-    fun brandSteps(): Int? = when (Build.MANUFACTURER.lowercase()) {
-        "xiaomi", "redmi", "poco" -> R.string.keepalive_xiaomi
-        "oppo", "realme" -> R.string.keepalive_oppo
-        "oneplus" -> R.string.keepalive_oneplus
-        "vivo", "iqoo" -> R.string.keepalive_vivo
-        "samsung" -> R.string.keepalive_samsung
-        else -> null
-    }
+    fun brandSteps(context: Context): Int? = brandSteps { name -> installed(context, name) }
+
+    /**
+     * The same decision, against any answer about what is installed.
+     *
+     * Separated so a plain JVM test can make it: the mapping is the part that goes wrong, and
+     * it needs no phone to check.
+     */
+    internal fun brandSteps(installed: (String) -> Boolean): Int? =
+        SYSTEMS.firstOrNull { system -> system.second.any(installed) }?.first
+
+    private fun installed(context: Context, name: String): Boolean =
+        try {
+            val packages = context.packageManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packages.getPackageInfo(name, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packages.getPackageInfo(name, 0)
+            }
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+
+    /**
+     * Each system, and the packages that say it is this one.
+     *
+     * Every entry is declared in the manifest's `queries` block, without which Android 11 and
+     * later answer "not installed" for all of them and nobody is ever shown any steps.
+     *
+     * OnePlus comes before Oppo because a recent OxygenOS ships Oppo's own package alongside
+     * its own, and the OnePlus menus are the ones on that phone.
+     */
+    private val SYSTEMS: List<Pair<Int, List<String>>> = listOf(
+        R.string.keepalive_xiaomi to listOf("com.miui.securitycenter", "com.miui.powerkeeper"),
+        R.string.keepalive_oneplus to listOf("com.oneplus.security"),
+        R.string.keepalive_oppo to listOf(
+            "com.coloros.safecenter",
+            "com.oplus.safecenter",
+            "com.coloros.oppoguardelf",
+        ),
+        R.string.keepalive_vivo to listOf(
+            "com.iqoo.secure",
+            "com.vivo.permissionmanager",
+            "com.vivo.abe",
+        ),
+        R.string.keepalive_samsung to listOf("com.samsung.android.lool"),
+    )
 }

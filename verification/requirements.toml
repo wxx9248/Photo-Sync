@@ -16,6 +16,14 @@ status = "active"
 quote = "Foreground service (`dataSync` type) + partial wake lock + Wi-Fi lock + persistent notification with live progress"
 
 [[requirement]]
+id = "R-ALIVE-002"
+section = "§3.1"
+area = "ALIVE"
+status = "active"
+quote = "Target devices are **Xiaomi/Redmi/POCO (MIUI/HyperOS)** and **Oppo/Vivo/OnePlus/realme (ColorOS/OriginOS/OxygenOS)**"
+note = "The steps belong to the system software named in the brackets, not to whoever made the handset. A community build of Android on one of these phones has neither the menus nor the killing."
+
+[[requirement]]
 id = "R-ALIVE-003"
 section = "§3.3"
 area = "ALIVE"
