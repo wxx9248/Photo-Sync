@@ -436,3 +436,55 @@ fn the_desktop_offers_each_stream_the_window_the_stack_document_fixes() {
 
     assert_eq!(window, 8 * 1024 * 1024, "the window is {window} bytes");
 }
+
+/// How fast the desktop can take photographs when nothing else is in the way.
+///
+/// `docs/VERIFICATION.md` §5 calls this a tracked metric rather than a gate: it is a number to
+/// watch, not a thing to fail a build on, because timing on a shared machine is noisy. What it
+/// is for is telling a slow phone apart from a slow desktop. The phone here is this process --
+/// files in memory, no MediaStore, no Wi-Fi -- so whatever it reports is the desktop's own cost
+/// of writing, syncing, verifying and committing, plus a loopback socket.
+///
+/// Not run by default. `cargo test --release -p photo-sync-testclient --test loopback --
+/// --ignored --nocapture` prints it.
+#[test]
+#[ignore = "a measurement, not an assertion"]
+fn how_fast_the_desktop_takes_photographs() {
+    const FILES: usize = 150;
+    const BYTES: usize = 1_000_000;
+
+    let scratch = Scratch::new();
+    let mut phone = Phone::new("phone-a", "Kitchen phone");
+    for at in 0..FILES {
+        // Every one different, so the commit does the renaming work of a real batch rather
+        // than the deduplication work of a synthetic one.
+        let mut content = vec![0_u8; BYTES + at];
+        for (n, byte) in content.iter_mut().enumerate() {
+            *byte = (n.wrapping_mul(at + 1) % 251) as u8;
+        }
+        phone = phone.holding(
+            &format!("DCIM/Camera/IMG_{at:04}.jpg"),
+            PhoneFile::new(MTIME + at as i64, content),
+        );
+    }
+
+    let known = known(&scratch, &phone);
+    let mut connected = dial(&known, &phone);
+
+    let started = std::time::Instant::now();
+    let outcome = phone.run_session(&mut connected);
+    let took = started.elapsed();
+
+    assert_eq!(
+        outcome.uploaded.len(),
+        FILES,
+        "not every photograph crossed"
+    );
+    let bytes = (FILES * BYTES) as f64;
+    println!(
+        "desktop: {FILES} photographs in {:.1}s --- {:.0} ms each, {:.1} MB/s",
+        took.as_secs_f64(),
+        took.as_secs_f64() * 1000.0 / FILES as f64,
+        bytes / 1e6 / took.as_secs_f64(),
+    );
+}

@@ -128,6 +128,14 @@ pub async fn listen(
             let Ok((socket, _)) = listener.accept().await else {
                 continue;
             };
+            // Nagle's algorithm holds a small write back until the last one is acknowledged,
+            // and the phone's delayed acknowledgement can be tens of milliseconds away. What
+            // travels on this connection between a photograph's chunks is exactly that kind
+            // of write --- the answer that says a file is stored, a window update, a ping ---
+            // so every one of them can wait on a timer instead of on the network. tonic sets
+            // this itself when it owns the listener; this one is ours, because the TLS
+            // handshake has to be done before tonic sees the connection.
+            let _ = socket.set_nodelay(true);
             let acceptor = acceptor.clone();
             let connections = connections.clone();
             // Each handshake gets its own task, so one phone that connects and says nothing

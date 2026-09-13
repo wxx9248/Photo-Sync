@@ -262,10 +262,50 @@ once per stream rather than once per chunk halves that, and barely moves the wal
 because the phone spends the time it saves waiting for the desktop instead. What is left is
 the round trip and the desktop's per-file work: write, fsync, verify, rename.
 
-Exit: met in the narrow sense --- four streams, measured, faster, tests green --- and the next
-lever is named rather than taken. Reading and hashing on the phone happen on the one loop that
-also feeds every lane; moving them off it, and measuring the desktop's per-file cost, is where
-the other nine tenths of that link are.
+Exit: met, and the other nine tenths turned out not to be on the phone at all.
+
+### Where the time actually goes
+
+The phone was profiled during a real transfer and used **2.6 seconds of processor time in
+twenty-five seconds** of transferring: it is not working, it is waiting. Timing what it waits
+on says the same thing --- handing over every byte of 150 photographs costs 0.85 s, and
+waiting for the desktop to answer costs 23.6 s.
+
+The same 150 photographs, sent by a phone that is a Rust program in the desktop's own process,
+with only the vault's filesystem changed:
+
+| vault on | per photograph | throughput |
+|---|---|---|
+| tmpfs | 52 ms | 19.2 MB/s |
+| this machine's disk | 323 ms | 3.1 MB/s |
+
+A real phone over Wi-Fi does 307 ms. **It is already as fast as a local program**, because
+the four streams overlap the wait. The vault here lives on a 5400 rpm laptop disk where one
+`fsync` costs 55 ms, and a session of 150 photographs issues 633 of them plus 150
+`fdatasync`s --- about 35 seconds of the 48. Of those 633, roughly one per file is the staging
+directory being made durable when a file is created, and most of the rest are SQLite, which
+runs `synchronous = FULL` because "everything here is a durability claim".
+
+So the ordering is: **disk, then everything else, and nothing else is close.** The MediaStore
+work, the transport, TLS, the phone's processor and the Wi-Fi link are all hidden behind it ---
+the link carries 36.8 MB/s and the transfer uses a tenth of that.
+
+### What that leaves
+
+Not a performance problem so much as a durability price, and it is worth deciding rather than
+discovering:
+
+* **The staging directory is synced when each file is created.** The comment beside it says
+  what it buys: without it a power loss loses the partial's name, and that transfer starts
+  again from zero. §7.3 already calls a re-transfer from zero acceptable elsewhere. Folding
+  this sync into the watermark sync the file already gets, or doing it a group at a time the
+  way §7.3's commit does, costs one crash's worth of re-sending.
+* **The index runs `synchronous = FULL`** and each staging-entry row is its own transaction.
+  §7.3 needs the index rows of a *commit* durable before it proceeds; a manifest row saying a
+  partial exists is a weaker claim than that.
+* Either change moves a durability boundary, which is the most carefully modelled part of this
+  system. The model, the crash campaign and §7.4's replay are what would say whether it is
+  safe, and that is a milestone of its own rather than a tuning knob.
 
 ## Environment
 
