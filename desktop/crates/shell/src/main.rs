@@ -47,14 +47,8 @@ use window::{AppWindow, PhoneRow, StagedRow};
 
 /// The port is asked for by the operating system and announced over mDNS, so nothing has to
 /// agree on a number in advance.
-/// Every address this machine has, on a port it chooses.
-///
-/// `[::]` rather than `0.0.0.0`, because the responder advertises every address the machine
-/// holds and a phone picks one of them. A desktop bound to IPv4 alone that advertised an IPv6
-/// address was a desktop the phone found and could not reach --- and, since nothing ever
-/// arrived, one that had nothing to say about why. Linux accepts IPv4 on an IPv6 socket
-/// unless `bindv6only` is set, so this listens for both.
-const ANY_PORT: &str = "[::]:0";
+/// Where the port from the last run is kept, beside the identity and the index.
+const PORT_FILE: &str = "port";
 
 /// How often the window catches up with what the desktop has been doing.
 const REFRESH: std::time::Duration = std::time::Duration::from_millis(500);
@@ -93,7 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The transport lives on its own runtime: the window owns the main thread, because that
     // is where a windowing system insists its event loop runs.
     let runtime = tokio::runtime::Runtime::new()?;
-    let address: SocketAddr = ANY_PORT.parse()?;
+    // `[::]` rather than `0.0.0.0`: the responder advertises every address this machine holds
+    // and a phone picks among them, so a desktop listening on one family only is a desktop
+    // that can be found and not reached. Linux accepts IPv4 on an IPv6 socket unless
+    // `bindv6only` is set, so this listens for both.
+    let address: SocketAddr = format!("[::]:{}", port_to_ask_for(&data)).parse()?;
     // One window, shared: the tray opens it, the pairing service shows a code in it, and the
     // person answers through it. `PairingWindow::closed()` here meant the desktop could never
     // meet a phone it did not already know.
@@ -108,6 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &data,
     ))?;
     tracing::info!(port = listening.address.port(), "listening");
+    remember_port(&data, listening.address.port());
 
     let announced = match Advertising::start(&settings.name, listening.address.port(), &[]) {
         Ok(announced) => Some(announced),
@@ -273,6 +272,37 @@ fn row_of(phone: &Phone) -> PhoneRow {
         #[allow(clippy::cast_precision_loss)]
         progress: phone.progress as f32 / 100.0,
         busy: phone.busy,
+    }
+}
+
+/// The port to ask for: the one this desktop used last time, if it is still free.
+///
+/// An mDNS record outlives the process that published it. A desktop that is killed rather
+/// than closed sends no goodbye, and a phone can hold the stale record for minutes --- so it
+/// dials the old port and finds nothing there. Keeping the port across restarts makes that
+/// record true again, which is cheaper than teaching every phone to doubt its own cache.
+///
+/// Zero means "any", which is what a first run and a taken port both get.
+fn port_to_ask_for(data: &std::path::Path) -> u16 {
+    let Ok(text) = std::fs::read_to_string(data.join(PORT_FILE)) else {
+        return 0;
+    };
+    let Ok(remembered) = text.trim().parse::<u16>() else {
+        return 0;
+    };
+    // Asking and finding out are the same act, so this binds to see and drops immediately.
+    // Something else could take it in between; the cost of that is one changed port.
+    match std::net::TcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, remembered)) {
+        Ok(_) => remembered,
+        Err(_) => 0,
+    }
+}
+
+fn remember_port(data: &std::path::Path, port: u16) {
+    if let Err(error) = std::fs::write(data.join(PORT_FILE), port.to_string()) {
+        // Worth saying and not worth stopping for: the next start picks another port and a
+        // phone with a stale record waits for its cache to expire.
+        tracing::warn!("this desktop will not remember its port: {error}");
     }
 }
 
