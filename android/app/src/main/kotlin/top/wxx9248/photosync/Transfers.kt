@@ -93,20 +93,26 @@ internal object Transfers {
         answering?.complete(false)
     }
 
-    private var removing: CompletableDeferred<Set<DevicePath>>? = null
+    /** What became of a removal: what went, and what a person turned down. */
+    data class Removed(
+        override val gone: Set<DevicePath>,
+        override val declined: Set<DevicePath>,
+    ) : top.wxx9248.photosync.net.Removal
+
+    private var removing: CompletableDeferred<Removed>? = null
 
     /** Puts the removal in front of whoever can carry it out, and waits. */
-    suspend fun remove(paths: List<DevicePath>): Set<DevicePath> {
-        val carried = CompletableDeferred<Set<DevicePath>>()
+    suspend fun remove(paths: List<DevicePath>): Removed {
+        val carried = CompletableDeferred<Removed>()
         removing = carried
         current.value = Stage.Removing(paths)
-        val gone = carried.await()
+        val answered = carried.await()
         current.value = Stage.Working
-        return gone
+        return answered
     }
 
-    /** What actually went, as the screen found it afterwards. */
-    fun removed(gone: Set<DevicePath>) {
-        removing?.complete(gone)
+    /** What actually went, as the screen found it afterwards, and what was turned down. */
+    fun removed(gone: Set<DevicePath>, declined: Set<DevicePath>) {
+        removing?.complete(Removed(gone, declined))
     }
 }

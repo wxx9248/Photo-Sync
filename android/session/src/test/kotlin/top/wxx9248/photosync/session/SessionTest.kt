@@ -92,6 +92,25 @@ class SessionTest {
         )
     }
 
+    @Test
+    fun `a person who turns the system down has kept the photograph, not failed to delete it`() {
+        val library = oneLibrary()
+        val desktop = FakeDesktop(library)
+        val session = phone(library)
+        playUntilAsked(session, desktop)
+
+        session.freeUp()
+        val cleared = assertNotNull(session.freeing)
+
+        // The platform put the request to them and they said no. The wire calls that
+        // KEPT_USER, and a household reading "failed" would think something went wrong.
+        session.freed(gone = emptySet(), declined = cleared.toSet())
+        play(session, desktop, library)
+
+        assertEquals(listOf(DeletionResult.KEPT_USER), reported(desktop).map { it.result })
+        assertEquals(1, assertIs<Outcome.Finished>(session.outcome).kept)
+    }
+
     // No `@Covers`: R-DELETE-009 is about the mechanism --- `createDeleteRequest`, silent when
     // media management is granted --- and that is the platform's behaviour rather than this
     // module's. What is checked here is what the session does with the answer.

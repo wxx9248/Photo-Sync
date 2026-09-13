@@ -94,18 +94,23 @@ class Session(
         get() = (phase as? Phase.Freeing)?.approved
 
     /**
-     * What actually went.
+     * What actually went, and what a person turned down on the way.
      *
-     * Anything cleared and still here is a failure rather than a refusal: the person agreed,
-     * the gates agreed, and the platform did not do it. §8 reports per file, and the
-     * difference matters to somebody reading the summary.
+     * The wire calls a declined request `KEPT_USER` --- "the user declined, or the platform
+     * delete request was not granted" --- and that is a different thing from a delete that was
+     * allowed and did not happen. A household that says no to the system's own dialog should
+     * read "kept", not "failed".
      */
-    fun freed(gone: Set<DevicePath>) {
+    fun freed(gone: Set<DevicePath>, declined: Set<DevicePath> = emptySet()) {
         val here = phase as? Phase.Freeing ?: return
         val removed = here.approved.map { path ->
             DeletionOutcome(
                 path,
-                if (gone.contains(path)) DeletionResult.DELETED else DeletionResult.FAILED,
+                when {
+                    gone.contains(path) -> DeletionResult.DELETED
+                    declined.contains(path) -> DeletionResult.KEPT_USER
+                    else -> DeletionResult.FAILED
+                },
             )
         }
         phase = Phase.Deleting(removed + here.kept)

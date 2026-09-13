@@ -36,7 +36,7 @@ internal class Sync(
     suspend fun run(
         paired: PairedDesktop,
         ask: suspend (FreeUp) -> Boolean,
-        remove: suspend (List<DevicePath>) -> Set<DevicePath>,
+        remove: suspend (List<DevicePath>) -> Removal,
     ): Outcome? {
         val address = Discovery(context).find() ?: return null
 
@@ -66,7 +66,9 @@ internal class Sync(
                     }
                     val cleared = session.freeing
                     if (cleared != null) {
-                        session.freed(if (cleared.isEmpty()) emptySet() else remove(cleared))
+                        val carried =
+                            if (cleared.isEmpty()) Removal.NOTHING else remove(cleared)
+                        session.freed(carried.gone, carried.declined)
                         continue
                     }
                     val said = session.next() ?: break
@@ -75,5 +77,18 @@ internal class Sync(
             }
         }
         return session.outcome
+    }
+}
+
+/** What became of a removal: what went, and what a person turned down. §8 tells them apart. */
+internal interface Removal {
+    val gone: Set<DevicePath>
+    val declined: Set<DevicePath>
+
+    companion object {
+        val NOTHING: Removal = object : Removal {
+            override val gone: Set<DevicePath> = emptySet()
+            override val declined: Set<DevicePath> = emptySet()
+        }
     }
 }

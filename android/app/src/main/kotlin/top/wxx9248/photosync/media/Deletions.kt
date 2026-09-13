@@ -22,12 +22,12 @@ internal object Deletions {
     const val BATCH: Int = 500
 
     /**
-     * Builds the requests that would delete these photographs, in batches.
+     * Builds the request that would delete these photographs.
      *
-     * Each has to be launched and its answer waited for; nothing is deleted by building one.
+     * One batch, because the caller has to know which photographs a person was answering
+     * about: the answer is per request, and §8 reports per file. Nothing is deleted by
+     * building one --- it has to be launched and its answer waited for.
      */
-    fun requests(resolver: ContentResolver, items: List<Uri>): List<PendingIntent> =
-        items.chunked(BATCH).map { batch ->
-            MediaStore.createDeleteRequest(resolver, batch)
-        }
+    fun request(resolver: ContentResolver, items: List<Uri>): PendingIntent =
+        MediaStore.createDeleteRequest(resolver, items)
 }

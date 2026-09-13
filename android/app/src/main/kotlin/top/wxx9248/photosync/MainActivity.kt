@@ -183,20 +183,26 @@ class MainActivity : ComponentActivity() {
      */
     @Composable
     private fun Removing(paths: List<DevicePath>) {
-        val answered = remember { Channel<Unit>(Channel.UNLIMITED) }
+        val answered = remember { Channel<Boolean>(Channel.UNLIMITED) }
         val asking = rememberLauncherForActivityResult(
             ActivityResultContracts.StartIntentSenderForResult()
-        ) { answered.trySend(Unit) }
+        ) { answered.trySend(it.resultCode == RESULT_OK) }
 
         LaunchedEffect(paths) {
             val library = MediaStoreLibrary(contentResolver)
+            val declined = mutableSetOf<DevicePath>()
+
             // Batched, because a binder transaction has a size limit a few thousand
-            // identifiers would exceed. §8.
-            for (request in Deletions.requests(contentResolver, library.uris(paths))) {
+            // identifiers would exceed. §8. The batch is kept beside its answer, since that
+            // is the granularity a person answers at.
+            for (batch in paths.chunked(Deletions.BATCH)) {
+                val request = Deletions.request(contentResolver, library.uris(batch))
                 asking.launch(IntentSenderRequest.Builder(request.intentSender).build())
-                answered.receive()
+                if (!answered.receive()) {
+                    declined.addAll(batch)
+                }
             }
-            Transfers.removed(library.gone(paths))
+            Transfers.removed(library.gone(paths), declined)
         }
 
         WaitingScreen(R.string.transfer_working)
