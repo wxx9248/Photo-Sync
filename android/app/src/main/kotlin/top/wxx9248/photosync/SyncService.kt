@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import top.wxx9248.photosync.net.Identity
 import top.wxx9248.photosync.net.Sync
@@ -20,14 +21,17 @@ import top.wxx9248.photosync.session.Pairing
  * Runs one session, and keeps the process alive while it does.
  *
  * `SPEC.md` §3.3 calls this the keep-alive stack, and the foreground service is its floor: an
- * ordinary background process on the target devices is killed within minutes. Everything above
- * it — the battery-optimisation exemption, the brand-specific autostart settings — is asked for
- * during onboarding and cannot be enforced from here.
+ * ordinary background process on the target devices is killed within minutes. The two locks
+ * beside it are [Awake]. Everything above them — the battery-optimisation exemption, the
+ * brand-specific autostart settings — is asked for during onboarding and cannot be enforced
+ * from here.
  *
  * The notification is not decoration. It is what the platform requires in exchange for staying
  * alive, and it is also the only honest place to tell somebody their phone is busy.
  */
 class SyncService : LifecycleService() {
+    private val awake: Awake by lazy { Awake(this) }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         startForeground(
@@ -35,6 +39,14 @@ class SyncService : LifecycleService() {
             notification(getString(R.string.notification_working)),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
         )
+        awake.hold()
+
+        // §3.3 asks the notification for live progress. It is the only thing a person can see
+        // while the screen is off and the application is not in front of them, so it follows
+        // the session rather than being written once at the start.
+        lifecycleScope.launch {
+            Transfers.stage.collectLatest { stage -> say(wording(stage)) }
+        }
 
         // Tied to the service, so a session ends when the service does rather than outliving
         // the notification that justifies it. Rule K9. On the I/O threads, because a session
@@ -48,6 +60,11 @@ class SyncService : LifecycleService() {
         // nothing to redeliver: starting again from a stale intent would re-send a catalog
         // that has since gone stale.
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        awake.release()
+        super.onDestroy()
     }
 
     private suspend fun runSession() {
@@ -67,6 +84,12 @@ class SyncService : LifecycleService() {
     }
 
     private fun deviceName(): String = android.os.Build.MODEL
+
+    private fun say(line: Wording) {
+        val text = getString(line.text, *line.numbers.toTypedArray())
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION, notification(text))
+    }
 
     private fun notification(text: String): Notification {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

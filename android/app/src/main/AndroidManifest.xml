@@ -19,6 +19,9 @@
          killed within minutes of the screen going off. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- The partial wake lock and the Wi-Fi lock §3.3 names beside the service. The Wi-Fi
+         lock is taken under this same permission. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-permission android:name="android.permission.INTERNET" />

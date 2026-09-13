@@ -9,6 +9,21 @@
 # full tier.
 
 [[requirement]]
+id = "R-ALIVE-001"
+section = "§3.3"
+area = "ALIVE"
+status = "active"
+quote = "Foreground service (`dataSync` type) + partial wake lock + Wi-Fi lock + persistent notification with live progress"
+
+[[requirement]]
+id = "R-ALIVE-003"
+section = "§3.3"
+area = "ALIVE"
+status = "deferred"
+quote = "A session survives screen-off and backgrounding."
+note = "Nothing in the suite can put a phone to sleep. Watched by hand instead: five hundred photographs crossed on a phone in forced deep idle with the screen off."
+
+[[requirement]]
 id = "R-CATALOG-001"
 section = "§3.2"
 area = "CATALOG"
