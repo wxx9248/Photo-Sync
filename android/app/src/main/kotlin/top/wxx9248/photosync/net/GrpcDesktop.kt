@@ -57,15 +57,32 @@ import top.wxx9248.photosync.session.UploadOutcome
  * decisions, no retries, no state of its own beyond the file being streamed — because a
  * decision made here is a decision the JVM tests cannot see.
  *
- * One file at a time crosses here. §6.4 allows several concurrent streams and the desktop is
- * built for them; opening more is a change to this class alone, and it is worth measuring on
- * a real network before it is made.
+ * Four files cross at once, each on its own connection. §6.4 asks for concurrent streams and
+ * `STACK.md` §3.6 says what that means here: separate TCP connections rather than several
+ * streams multiplexed on one, so a lost segment stalls one file instead of all of them and
+ * each has its own congestion window.
+ *
+ * The loop that feeds them is still one coroutine, and deliberately. What the old arrangement
+ * waited for was not bandwidth but the desktop: a file was not opened until the one before it
+ * had been written, fsynced, verified and renamed. Those gaps are what several connections
+ * fill. A lane whose window is full does block the others for as long as it takes the link to
+ * drain --- but at that point the link is the limit, and a second thread pushing at the same
+ * Wi-Fi radio would not make it wider.
  */
 internal class GrpcDesktop(
-    private val channel: ManagedChannel,
+    private val channels: List<ManagedChannel>,
     parent: CoroutineScope,
 ) : AutoCloseable {
-    private val stub = PhotoSyncGrpcKt.PhotoSyncCoroutineStub(channel)
+    /**
+     * Everything that is not a file goes on the first connection.
+     *
+     * The handshake, the catalog and the diff all happen before any file moves, and the finish
+     * after the last one, so this never competes with an upload for the link.
+     */
+    private val stub = PhotoSyncGrpcKt.PhotoSyncCoroutineStub(channels.first())
+
+    /** One stub per connection in the pool, each carrying at most one upload. */
+    private val lanes = channels.map { PhotoSyncGrpcKt.PhotoSyncCoroutineStub(it) }
 
     /**
      * Where an upload runs while the calls that feed it come and go.
@@ -77,12 +94,21 @@ internal class GrpcDesktop(
      */
     private val uploads = parent + SupervisorJob(parent.coroutineContext[Job])
 
-    /** The file crossing right now: what it is being fed, and what the desktop will answer. */
-    private var uploading: Uploading? = null
+    /**
+     * The files crossing right now, by the identifier the desktop gave each one.
+     *
+     * By identifier because that is how the answers come back: with several streams open, the
+     * next answer is about whichever file the desktop finished first.
+     */
+    private val uploading = LinkedHashMap<FileId, Uploading>()
+
+    /** Connections with no file on them, oldest free first. */
+    private val idle = ArrayDeque((channels.indices).toList())
 
     private class Uploading(
+        val lane: Int,
         val pieces: SendChannel<Wire.FileChunk>,
-        val answer: Deferred<Wire.UploadResult>,
+        val answer: Deferred<UploadOutcome>,
     )
 
     /**
@@ -97,7 +123,9 @@ internal class GrpcDesktop(
         Outbound.RequestDiff -> diff()
         is Outbound.OpenUpload -> open(said)
         is Outbound.SendChunk -> {
-            uploading?.let { feed(it, fileChunk { data = ByteString.copyFrom(said.data) }) }
+            uploading[said.file]?.let {
+                feed(it, fileChunk { data = ByteString.copyFrom(said.data) })
+            }
             null
         }
         is Outbound.CloseUpload -> upload(said)
@@ -181,8 +209,24 @@ internal class GrpcDesktop(
      */
     private suspend fun open(said: Outbound.OpenUpload): Inbound? {
         val pieces = Channel<Wire.FileChunk>(Channel.RENDEZVOUS)
-        val sending = Uploading(pieces, uploads.async { stub.uploadFile(pieces.consumeAsFlow()) })
-        uploading = sending
+        // A free connection always exists: the session opens at most as many files as there
+        // are lanes, and a lane is given back the moment its file is answered for.
+        val lane = idle.removeFirstOrNull() ?: 0
+        val sending = Uploading(
+            lane,
+            pieces,
+            // The answer is a value rather than a call that might throw, because several of
+            // them are waited on together and a failure has to say which file it was about.
+            uploads.async {
+                try {
+                    outcomeOf(lanes[lane].uploadFile(pieces.consumeAsFlow()).statusValue)
+                } catch (failure: Exception) {
+                    coroutineContext.ensureActive()
+                    UploadOutcome.WRITE_FAILED
+                }
+            },
+        )
+        uploading[said.file] = sending
         feed(
             sending,
             fileChunk {
@@ -225,16 +269,41 @@ internal class GrpcDesktop(
         }
     }
 
-    /** Closes the request with the digest, and reads what became of the file. */
-    private suspend fun upload(said: Outbound.CloseUpload): Inbound {
-        val sending = uploading ?: return Inbound.UploadAnswered(said.file, UploadOutcome.WRITE_FAILED)
-        uploading = null
+    /**
+     * Closes the request with the digest, and leaves the desktop to answer in its own time.
+     *
+     * Nothing is waited for here. The desktop answers when the file is written, fsynced,
+     * verified and renamed, and waiting for that before opening the next file is exactly what
+     * §6.4's concurrent streams are for. [answered] is where the answer is collected.
+     */
+    private suspend fun upload(said: Outbound.CloseUpload): Inbound? {
+        val sending = uploading[said.file]
+            ?: return Inbound.UploadAnswered(said.file, UploadOutcome.WRITE_FAILED)
 
         feed(sending, fileChunk { trailer = fileTrailer { sha256 = hexToBytes(said.digest) } })
         sending.pieces.close()
-        return answering({ Inbound.UploadAnswered(said.file, UploadOutcome.WRITE_FAILED) }) {
-            Inbound.UploadAnswered(said.file, outcomeOf(sending.answer.await().statusValue))
+        return null
+    }
+
+    /**
+     * Waits for whichever file the desktop finishes first, or null when none is outstanding.
+     *
+     * The session asks for this when it has nothing left to say: every stream it is allowed is
+     * open and each is waiting to be told what became of its file.
+     */
+    suspend fun answered(): Inbound? {
+        val outstanding = uploading.entries.toList()
+        if (outstanding.isEmpty()) {
+            return null
         }
+
+        val (file, outcome) = select {
+            outstanding.forEach { (file, sending) ->
+                sending.answer.onAwait { became -> file to became }
+            }
+        }
+        uploading.remove(file)?.let { idle.addLast(it.lane) }
+        return Inbound.UploadAnswered(file, outcome)
     }
 
     private suspend fun finish(): Inbound = answering({ Inbound.Rejected(reasonOf(it)) }) {
@@ -292,7 +361,7 @@ internal class GrpcDesktop(
 
     override fun close() {
         uploads.cancel()
-        channel.shutdownNow()
+        channels.forEach { it.shutdownNow() }
     }
 
     /**
@@ -361,17 +430,37 @@ internal class GrpcDesktop(
         private const val ORIGIN_EARLIER = 2
 
         /**
-         * Opens a channel to a desktop this phone is paired with.
+         * How many connections carry files. `STACK.md` §4.5.
+         *
+         * One per stream the session opens, which is what makes §6.4's concurrency N
+         * connections rather than N streams sharing one: on a single connection a lost
+         * segment stalls every file behind it, and all of them share one congestion window.
+         */
+        const val POOL: Int = 4
+
+        /**
+         * The HTTP/2 window each connection asks for, in bytes. `STACK.md` §3.6.
+         *
+         * The default is 65,535, which caps a stream at window divided by round-trip time ---
+         * a few megabytes a second on a home Wi-Fi network, well under the link. Eight
+         * megabytes is what the desktop offers, and this is the phone's matching half.
+         */
+        const val WINDOW_BYTES: Int = 8 * 1024 * 1024
+
+        /**
+         * Opens the connections to a desktop this phone is paired with.
          *
          * Both directions are pinned: the phone checks the desktop against the key it wrote
          * down, and presents its own so the desktop can do the same. Nothing else about
-         * either certificate is examined. §5.2.
+         * either certificate is examined. §5.2. Every connection in the pool presents the
+         * same key, so the desktop sees one phone however many of them arrive.
          */
         fun connect(
             address: InetSocketAddress,
             identity: Identity,
             desktopPin: String,
             scope: CoroutineScope,
+            pool: Int = POOL,
         ): GrpcDesktop {
             val context = SSLContext.getInstance("TLSv1.3").apply {
                 init(
@@ -380,21 +469,24 @@ internal class GrpcDesktop(
                     null,
                 )
             }
-            val channel = OkHttpChannelBuilder.forAddress(address.hostString, address.port)
-                .useTransportSecurity()
-                .sslSocketFactory(context.socketFactory)
-                // A desktop that goes away mid-transfer takes its socket with it and says
-                // nothing. Without these the phone waits on that socket for as long as the
-                // operating system lets it, which is minutes, and §6's rejoin never starts
-                // because the session it would rejoin has not ended.
-                .keepAliveTime(KEEPALIVE_SECONDS, TimeUnit.SECONDS)
-                .keepAliveTimeout(KEEPALIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                // The name is not checked — the key is — but a channel needs one to put in
-                // the SNI extension, and "photo-sync" is what the desktop's own certificate
-                // says.
-                .overrideAuthority("photo-sync")
-                .build()
-            return GrpcDesktop(channel, scope)
+            val channels = (0 until pool).map {
+                OkHttpChannelBuilder.forAddress(address.hostString, address.port)
+                    .useTransportSecurity()
+                    .sslSocketFactory(context.socketFactory)
+                    // A desktop that goes away mid-transfer takes its socket with it and says
+                    // nothing. Without these the phone waits on that socket for as long as the
+                    // operating system lets it, which is minutes, and §6's rejoin never starts
+                    // because the session it would rejoin has not ended.
+                    .keepAliveTime(KEEPALIVE_SECONDS, TimeUnit.SECONDS)
+                    .keepAliveTimeout(KEEPALIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .flowControlWindow(WINDOW_BYTES)
+                    // The name is not checked — the key is — but a channel needs one to put in
+                    // the SNI extension, and "photo-sync" is what the desktop's own certificate
+                    // says.
+                    .overrideAuthority("photo-sync")
+                    .build()
+            }
+            return GrpcDesktop(channels, scope)
         }
     }
 }

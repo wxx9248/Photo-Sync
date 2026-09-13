@@ -20,6 +20,15 @@ class FakeDesktop(
     private val refuse: Map<String, UploadOutcome> = emptyMap(),
     /** Whether a photograph offered for deletion was committed by this very session. */
     private val earlier: Set<String> = emptySet(),
+    /**
+     * Whether an upload is answered the moment it closes, or left for the test to hand over.
+     *
+     * A real desktop answers when it has fsynced and verified the file, which is well after
+     * the last chunk went out and is why §6.4 has several streams open at once. A fake that
+     * always answers immediately can never have two files in flight, so it cannot see the
+     * thing those tests are about.
+     */
+    private val defers: Boolean = false,
 ) {
     /** Everything the phone actually sent, in order. */
     val heard = mutableListOf<Outbound>()
@@ -54,7 +63,15 @@ class FakeDesktop(
                 received.getValue(said.file).addAll(said.data.toList())
                 null
             }
-            is Outbound.CloseUpload -> close(said)
+            is Outbound.CloseUpload -> {
+                val answer = close(said)
+                if (defers) {
+                    held.add(answer)
+                    null
+                } else {
+                    answer
+                }
+            }
             Outbound.Finish -> Inbound.Candidates(nominate())
             is Outbound.ReportDeletions -> {
                 said.outcomes.forEach {
@@ -66,6 +83,18 @@ class FakeDesktop(
                 Inbound.SessionFinished(sent, skipped, 0, deleted, kept, 0)
             }
         }
+    }
+
+    private val held = mutableListOf<Inbound.UploadAnswered>()
+
+    /** Files this desktop has taken whole and not yet answered for, oldest first. */
+    val waiting: List<FileId> get() = held.map { it.file }
+
+    /** Hands over the answer for one file, whatever order it was closed in. */
+    fun settle(file: FileId): Inbound.UploadAnswered {
+        val at = held.indexOfFirst { it.file == file }
+        check(at >= 0) { "the desktop is not holding an answer for $file" }
+        return held.removeAt(at)
     }
 
     private var planned: List<ToSend> = emptyList()
@@ -94,7 +123,7 @@ class FakeDesktop(
         alreadyStaged = 0,
     ).also { require(said == Outbound.RequestDiff) }
 
-    private fun close(said: Outbound.CloseUpload): Inbound {
+    private fun close(said: Outbound.CloseUpload): Inbound.UploadAnswered {
         val path = paths.getValue(said.file)
         refuse[path.value]?.let {
             skipped += 1

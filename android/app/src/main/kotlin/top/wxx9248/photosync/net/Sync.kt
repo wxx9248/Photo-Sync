@@ -98,7 +98,17 @@ internal class Sync(
                         session.freed(carried.gone, carried.declined)
                         continue
                     }
-                    val said = session.next() ?: break
+                    val said = session.next()
+                    if (said == null) {
+                        // Nothing left to say while files are still in flight: every stream
+                        // §6.4 allows is open and waiting to hear what became of its file.
+                        // A session with nothing outstanding either is finished or has
+                        // stopped, and both end the loop.
+                        val answer = desktop.answered() ?: break
+                        session.receive(answer)
+                        report(session.progress)
+                        continue
+                    }
                     desktop.say(said)?.let {
                         session.receive(it)
                         // Only when the desktop has answered, so a file's worth of chunks does

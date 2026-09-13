@@ -19,14 +19,40 @@ class Session(
     private val catalog: Catalog,
     private val library: Library,
     private val protocolVersion: Int = PROTOCOL_VERSION,
+    /**
+     * How many photographs may be in flight at once. §6.4.
+     *
+     * `STACK.md` §4.5 gives the driver four connections, one upload each, and this is the
+     * state machine's half of that number: it decides how many files it will have open, and
+     * the driver decides what carries them. A test passes 1 to watch the old behaviour, or 2
+     * to watch two streams interleave without needing four.
+     */
+    private val lanes: Int = LANES,
 ) {
     /** How much of a file travels in one message. `STACK.md` §5.3. */
     private val chunkBytes = 512 * 1024
 
     private var phase: Phase = Phase.Handshaking
     private var wanted: List<ToSend> = emptyList()
-    private var sending: Int = 0
-    private var offset: Long = 0
+
+    /**
+     * The files being sent right now, in the order they were opened.
+     *
+     * Keyed by the identifier the desktop gave the file, because that is what its answers are
+     * keyed by: with several streams open the next answer is not necessarily about the file
+     * whose bytes went out last.
+     */
+    private val flying = LinkedHashMap<FileId, Lane>()
+
+    /** How many of the wanted files have had a stream opened, and how many are finished. */
+    private var started = 0
+    private var answered = 0
+
+    /** Whose turn it is among the open streams, so none of them is starved. */
+    private var turn = 0
+
+    /** One file on its way: where it is up to, and whether its digest has gone. */
+    private class Lane(val at: Int, var offset: Long, var closed: Boolean = false)
 
     /**
      * How far through the photographs the desktop asked for. §3.4 shows this while it runs.
@@ -34,9 +60,13 @@ class Session(
      * Counted in files rather than bytes: what a person watching wants to know is whether it
      * is moving and roughly how much is left, and a count of files says both without the
      * phone having to know how large the remainder is.
+     *
+     * What is counted is files the desktop has answered for, not files started. With several
+     * streams open, more are on their way than this says --- and a number that went up before
+     * the desktop had the file would be claiming something that is not true yet.
      */
     val progress: Progress
-        get() = Progress(sent = sending, total = wanted.size)
+        get() = Progress(sent = answered, total = wanted.size)
 
     /** What became of the session, once there is an answer. */
     var outcome: Outcome? = null
@@ -49,13 +79,13 @@ class Session(
         Phase.Handshaking -> Outbound.Handshake(device, name, protocolVersion)
         Phase.Cataloguing -> Outbound.SubmitCatalog(catalog)
         Phase.Diffing -> Outbound.RequestDiff
-        is Phase.Sending -> sending(here)
+        Phase.Sending -> sending()
         Phase.Finishing -> Outbound.Finish
         is Phase.Deleting -> Outbound.ReportDeletions(here.outcomes)
         // Nothing to say while a person is being asked, or while the platform is being asked
         // to remove what they agreed to. §8 stops at both.
         is Phase.Asking, is Phase.Freeing -> null
-        Phase.Waiting, Phase.Done -> null
+        Phase.Done -> null
     }
 
     /**
@@ -159,12 +189,20 @@ class Session(
             Inbound.CatalogAcknowledged -> phase = Phase.Diffing
             is Inbound.Diff -> {
                 wanted = inbound.toSend
-                sending = 0
-                phase = if (wanted.isEmpty()) Phase.Finishing else openNext()
+                started = 0
+                answered = 0
+                turn = 0
+                flying.clear()
+                phase = if (wanted.isEmpty()) Phase.Finishing else Phase.Sending
             }
             is Inbound.UploadAnswered -> {
-                sending += 1
-                phase = if (sending < wanted.size) openNext() else Phase.Finishing
+                // By identifier, not by position: with several streams open the answer that
+                // arrives is about whichever file the desktop finished first, which is not
+                // necessarily the one whose bytes went out last.
+                if (flying.remove(inbound.file) != null) {
+                    answered += 1
+                }
+                phase = if (answered >= wanted.size) Phase.Finishing else Phase.Sending
             }
             // Nothing is deleted here. §8 puts one prompt between the desktop's list and the
             // phone acting on it, and `asking` is what that prompt is built from.
@@ -183,47 +221,71 @@ class Session(
         }
     }
 
-    /** The messages of one file, in order, as far as the desktop has let it get. */
-    private fun sending(here: Phase.Sending): Outbound {
-        val one = wanted[sending]
-        val whole = catalog[one.path]
-        val held = library.describe(one.path)
-
-        // What the header states is what the phone holds now, not what the catalog froze:
-        // §6.4 is written so the desktop can notice the difference and skip the file.
-        if (here.opened.not()) {
-            phase = Phase.Sending(opened = true)
-            offset = one.resumeOffset
-            return Outbound.OpenUpload(
-                file = one.file,
-                path = one.path,
-                size = held?.size ?: whole?.size ?: 0,
-                mtime = held?.mtime ?: whole?.mtime ?: Timestamp(0),
-                offset = one.resumeOffset,
-            )
+    /**
+     * The next thing to say about whichever file it is that file's turn.
+     *
+     * Null while every open stream is waiting on the desktop: there is more to send, but
+     * nothing to say until an answer comes back. The driver waits for one rather than
+     * treating this as the end.
+     */
+    private fun sending(): Outbound? {
+        if (flying.size < lanes && started < wanted.size) {
+            return open(wanted[started])
         }
 
-        val size = held?.size ?: 0
-        if (offset >= size) {
-            phase = Phase.Waiting
-            return Outbound.CloseUpload(one.file, library.digest(one.path))
+        val busy = flying.entries.filterNot { (_, lane) -> lane.closed }
+        if (busy.isEmpty()) {
+            return null
         }
 
-        val take = minOf(chunkBytes.toLong(), size - offset).toInt()
-        val data = library.read(one.path, offset, take)
-        val at = offset
-        offset += data.size
-        return Outbound.SendChunk(one.file, at, data)
+        // Round-robin, so a large photograph cannot hold up the ones beside it: several
+        // streams are only worth opening if they all make progress.
+        val chosen = busy[turn % busy.size]
+        turn += 1
+        return piece(chosen.key, chosen.value)
     }
 
-    private fun openNext(): Phase = Phase.Sending(opened = false)
+    /**
+     * Opens a stream for one file.
+     *
+     * What the header states is what the phone holds now, not what the catalog froze: §6.4 is
+     * written so the desktop can notice the difference and skip the file.
+     */
+    private fun open(one: ToSend): Outbound {
+        val whole = catalog[one.path]
+        val held = library.describe(one.path)
+        flying[one.file] = Lane(at = started, offset = one.resumeOffset)
+        started += 1
+        return Outbound.OpenUpload(
+            file = one.file,
+            path = one.path,
+            size = held?.size ?: whole?.size ?: 0,
+            mtime = held?.mtime ?: whole?.mtime ?: Timestamp(0),
+            offset = one.resumeOffset,
+        )
+    }
+
+    /** The next chunk of one open stream, or the digest that ends it. */
+    private fun piece(file: FileId, lane: Lane): Outbound {
+        val one = wanted[lane.at]
+        val size = library.describe(one.path)?.size ?: 0
+        if (lane.offset >= size) {
+            lane.closed = true
+            return Outbound.CloseUpload(file, library.digest(one.path))
+        }
+
+        val take = minOf(chunkBytes.toLong(), size - lane.offset).toInt()
+        val data = library.read(one.path, lane.offset, take)
+        val at = lane.offset
+        lane.offset += data.size
+        return Outbound.SendChunk(file, at, data)
+    }
 
     private sealed interface Phase {
         data object Handshaking : Phase
         data object Cataloguing : Phase
         data object Diffing : Phase
-        data class Sending(val opened: Boolean) : Phase
-        data object Waiting : Phase
+        data object Sending : Phase
         data class Asking(val candidates: List<DeletionCandidate>) : Phase
         data class Freeing(
             val approved: List<DevicePath>,
@@ -237,6 +299,16 @@ class Session(
     companion object {
         /** The version this phone speaks, stated in the handshake. `STACK.md` §5.4. */
         const val PROTOCOL_VERSION: Int = 1
+
+        /**
+         * How many photographs cross at once. `STACK.md` §4.5.
+         *
+         * Four, because that is how many connections the driver opens and each carries one
+         * upload. A fifth stream would have to share a connection with another, which is the
+         * arrangement §3.6 of that document rejects: one lost segment would stall every file
+         * behind it.
+         */
+        const val LANES: Int = 4
     }
 }
 

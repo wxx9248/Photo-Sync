@@ -309,3 +309,151 @@ private class CountingLibrary(val underlying: FakeLibrary) : Library by underlyi
         return underlying.digest(path)
     }
 }
+
+/**
+ * Several photographs on their way at once. `SPEC.md` §6.4.
+ *
+ * These are the tests that need a desktop which does not answer straight away. A real one
+ * answers when it has written, fsynced and verified the file, which is long after the last
+ * chunk arrived --- and it is exactly that gap several streams are for. A fake that answers
+ * the moment a stream closes can never have two files in flight, so it would show one at a
+ * time whatever the state machine did.
+ */
+class ConcurrentTransferTest {
+    /**
+     * A session that opens four streams, said here rather than read from the constant.
+     *
+     * A test that asserts `Session.LANES` files are in flight passes whatever that number is,
+     * including one --- which is the behaviour these tests exist to rule out. The number the
+     * application ships with is checked once, on its own, below.
+     */
+    private fun phone(library: FakeLibrary, lanes: Int = 4) =
+        Session(DeviceId("phone-a"), "Kitchen phone", library.catalog(), library, lanes = lanes)
+
+    private fun library(count: Int): FakeLibrary = FakeLibrary(
+        (1..count).associate { at ->
+            "DCIM/Camera/IMG_%04d.jpg".format(at) to (MTIME + at to "photograph $at".toByteArray())
+        }
+    )
+
+    /** Plays until the session has nothing left to say without an answer coming back. */
+    private fun untilItWaits(session: Session, desktop: FakeDesktop) {
+        var guard = 0
+        while (true) {
+            val said = session.next() ?: return
+            desktop.answer(said)?.let { session.receive(it) }
+            guard += 1
+            check(guard < 100_000) { "the session never stopped to wait" }
+        }
+    }
+
+    @Test
+    @Covers("R-XFER-006")
+    fun `four photographs are in flight before any of them is answered`() {
+        val library = library(10)
+        val desktop = FakeDesktop(library, defers = true)
+        val session = phone(library)
+
+        untilItWaits(session, desktop)
+
+        assertEquals(
+            4,
+            desktop.waiting.size,
+            "the phone had ${desktop.waiting.size} files in flight, not four",
+        )
+    }
+
+    @Test
+    @Covers("R-XFER-006")
+    fun `a photograph answered frees its lane for the next one`() {
+        val library = library(10)
+        val desktop = FakeDesktop(library, defers = true)
+        val session = phone(library)
+
+        untilItWaits(session, desktop)
+        val first = desktop.waiting.first()
+        session.receive(desktop.settle(first))
+        untilItWaits(session, desktop)
+
+        assertEquals(4, desktop.waiting.size, "the freed lane was not filled")
+        assertTrue(first !in desktop.waiting, "the answered file was opened again")
+    }
+
+    @Test
+    @Covers("R-XFER-006")
+    fun `answers that come back out of order are matched to their own files`() {
+        val library = library(4)
+        val desktop = FakeDesktop(library, defers = true)
+        val session = phone(library)
+
+        untilItWaits(session, desktop)
+        // Last one first, which is what a desktop does when a small file lands behind a large
+        // one: whichever it finishes verifying first is the one it answers for.
+        desktop.waiting.reversed().forEach { file -> session.receive(desktop.settle(file)) }
+
+        assertEquals(4, session.progress.sent)
+        assertEquals(Outbound.Finish, session.next(), "the session did not move on to §6.6")
+    }
+
+    @Test
+    @Covers("R-XFER-006", "R-XFER-001")
+    fun `interleaved streams each arrive as the photograph they were`() {
+        val library = library(6)
+        val desktop = FakeDesktop(library, defers = true)
+        val session = phone(library)
+
+        // Every file is opened, fed and closed with the others' chunks between its own.
+        untilItWaits(session, desktop)
+        while (desktop.waiting.isNotEmpty()) {
+            session.receive(desktop.settle(desktop.waiting.first()))
+            untilItWaits(session, desktop)
+        }
+
+        assertEquals(6, desktop.stored.size, "the desktop holds ${desktop.stored.keys}")
+        desktop.stored.forEach { (path, bytes) ->
+            assertContentEquals(
+                library.read(path, 0, bytes.size),
+                bytes,
+                "$path arrived as somebody else's photograph",
+            )
+        }
+    }
+
+    @Test
+    @Covers("R-XFER-006")
+    fun `progress counts the photographs the desktop has taken, not the ones sent at`() {
+        val library = library(8)
+        val desktop = FakeDesktop(library, defers = true)
+        val session = phone(library)
+
+        untilItWaits(session, desktop)
+
+        assertEquals(0, session.progress.sent, "progress counted files nobody has taken yet")
+        assertEquals(8, session.progress.total)
+
+        session.receive(desktop.settle(desktop.waiting.first()))
+        assertEquals(1, session.progress.sent)
+    }
+
+    @Test
+    @Covers("R-XFER-006")
+    fun `one lane is the old one-at-a-time order`() {
+        val library = library(5)
+        val desktop = FakeDesktop(library, defers = true)
+
+        untilItWaits(phone(library, lanes = 1), desktop)
+
+        assertEquals(1, desktop.waiting.size, "a session given one lane opened more than one")
+    }
+
+    /**
+     * `STACK.md` §4.5 fixes the number at four, and `docs/VERIFICATION.md` §5 asks for the
+     * transport's fixed numbers to be asserted rather than assumed. The driver opens one
+     * connection per lane, so this number and that pool are the same decision.
+     */
+    @Test
+    @Covers("R-XFER-006")
+    fun `the phone ships with four streams`() {
+        assertEquals(4, Session.LANES)
+    }
+}

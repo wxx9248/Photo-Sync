@@ -9,6 +9,7 @@ import io.grpc.inprocess.InProcessServerBuilder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
@@ -110,6 +111,17 @@ private class Loopback(service: PhotoSyncGrpcKt.PhotoSyncCoroutineImplBase) : Au
 
     val channel: ManagedChannel = InProcessChannelBuilder.forName(name).build()
 
+    /**
+     * A pool of connections to the same server.
+     *
+     * In process there is no socket behind any of them, so what this exercises is the
+     * driver's own bookkeeping: which lane a file went out on, and that a lane comes back
+     * when its file is answered for. What separate connections buy on a real network is
+     * `STACK.md` §3.6's argument, not something a test in one process can show.
+     */
+    fun pool(size: Int): List<ManagedChannel> =
+        List(size) { InProcessChannelBuilder.forName(name).build() }
+
     override fun close() {
         channel.shutdownNow()
         server.shutdownNow()
@@ -122,7 +134,7 @@ private fun phoning(watching: WatchingDesktop, body: suspend (GrpcDesktop) -> Un
         Loopback(watching).use { wire ->
             val session = CoroutineScope(Job())
             try {
-                GrpcDesktop(wire.channel, session).use { desktop -> body(desktop) }
+                GrpcDesktop(wire.pool(GrpcDesktop.POOL), session).use { desktop -> body(desktop) }
             } finally {
                 session.cancel()
             }
@@ -156,9 +168,15 @@ class GrpcDesktopTest {
         phoning(watching) { desktop ->
             desktop.say(opening())
             desktop.say(Outbound.SendChunk(FILE, 0, PHOTO))
-            val answered = desktop.say(Outbound.CloseUpload(FILE, DIGEST))
+            assertNull(
+                desktop.say(Outbound.CloseUpload(FILE, DIGEST)),
+                "closing waited for the answer instead of leaving the lane to finish",
+            )
 
-            assertEquals(Inbound.UploadAnswered(FILE, UploadOutcome.VERIFIED), answered)
+            assertEquals(
+                Inbound.UploadAnswered(FILE, UploadOutcome.VERIFIED),
+                desktop.answered(),
+            )
             assertEquals(Piece.HEADER, watching.next())
             assertEquals(Piece.DATA, watching.next())
             assertEquals(Piece.TRAILER, watching.next())
@@ -174,9 +192,40 @@ class GrpcDesktopTest {
             assertEquals(Piece.HEADER, watching.next())
 
             desktop.say(Outbound.SendChunk(FILE, 0, PHOTO))
-            val answered = desktop.say(Outbound.CloseUpload(FILE, DIGEST))
+            desktop.say(Outbound.CloseUpload(FILE, DIGEST))
 
-            assertEquals(Inbound.UploadAnswered(FILE, UploadOutcome.WRITE_FAILED), answered)
+            assertEquals(
+                Inbound.UploadAnswered(FILE, UploadOutcome.WRITE_FAILED),
+                desktop.answered(),
+            )
+        }
+    }
+
+    @Test
+    fun `two files are open at once and each answer names its own file`() {
+        val other = FileId(FILE.value + 1)
+        val watching = WatchingDesktop()
+        phoning(watching) { desktop ->
+            desktop.say(opening())
+            desktop.say(Outbound.OpenUpload(other, PATH, PHOTO.size.toLong(), Timestamp(1), 0))
+            desktop.say(Outbound.SendChunk(FILE, 0, PHOTO))
+            desktop.say(Outbound.SendChunk(other, 0, PHOTO))
+
+            // Both are closed before either is asked about, which is only possible because
+            // closing no longer waits. §6.4.
+            desktop.say(Outbound.CloseUpload(FILE, DIGEST))
+            desktop.say(Outbound.CloseUpload(other, DIGEST))
+
+            val answers = setOf(desktop.answered(), desktop.answered())
+
+            assertEquals(
+                setOf(
+                    Inbound.UploadAnswered(FILE, UploadOutcome.VERIFIED),
+                    Inbound.UploadAnswered(other, UploadOutcome.VERIFIED),
+                ),
+                answers,
+            )
+            assertNull(desktop.answered(), "the driver invented an answer nobody was owed")
         }
     }
 
