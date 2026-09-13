@@ -265,7 +265,13 @@ failing them. `./verify doctor` says which of the two a machine is.
 |---|---|---|
 | `quick` | core unit tests, model differential on the committed corpus, all scenarios in sim, `spec-check`, clippy, fmt | < 30 s |
 | `full` | + 256-seed campaign, real-bytes E2E, Kotlin JVM tests, the application module's build, unit tests and Android Lint, conformance vectors, descriptor check, requirement matrix gate | < 5 min |
-| `nightly` | + long campaign, `cargo-mutants`, Android managed-device suite, `cargo-deny`, `cargo-audit`, performance metrics | hours |
+| `nightly` | + long campaign, `cargo-mutants`, the self-test's negative controls, the instrumented suite on an attached phone, `cargo-deny` and `cargo-audit` over the lock file, performance metrics | hours |
+
+**Dependencies.** `desktop/deny.toml` says what the tree may be shipped under: permissive
+licences plus `GPL-3.0-only`, which is what this application is. Anything else fails rather
+than warns, because the licence of a release is not something a build decides. `cargo-audit`
+runs beside it and fails only on a published vulnerability --- a crate nobody maintains any
+more is a warning, which is a fact about its future rather than a defect in it.
 
 **Reports.** Every run writes `verification/reports/latest.json` (plus a timestamped copy):
 

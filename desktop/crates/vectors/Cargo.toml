@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 # Nothing. This reads a file of cases and hands them back; anything it depended on would be a
 # library the vectors were interpreted through.

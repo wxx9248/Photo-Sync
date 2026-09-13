@@ -82,6 +82,8 @@ pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
 
     if matches!(tier, Tier::Nightly) {
         report.add(phone_device_tests(root)?);
+        report.add(dependency_policy(&desktop)?);
+        report.add(advisories(&desktop)?);
         report.add(mutation(root)?);
         report.add(CheckResult::from_outcome(
             "self-test",
@@ -287,6 +289,50 @@ fn unit_tests(desktop: &Path) -> Result<CheckResult, String> {
         "tests",
         passed,
         "unit tests failed",
+    ))
+}
+
+/// What the dependency tree may be shipped under. `docs/VERIFICATION.md` §L6.
+///
+/// The policy is in `desktop/deny.toml` and is read against the lock file, so the answer is
+/// about what a release would actually contain rather than about what the manifests ask for.
+/// A licence question is not something a build can decide, which is why this fails rather than
+/// warning: the decision belongs to whoever makes releases.
+fn dependency_policy(desktop: &Path) -> Result<CheckResult, String> {
+    if !tools::cargo_subcommand_available("deny") {
+        return Ok(CheckResult::skipped(
+            "dependency policy",
+            "cargo-deny is not installed, run `cargo install cargo-deny`",
+        ));
+    }
+
+    let passed = tools::run("cargo", &["deny", "check"], desktop)?;
+    Ok(CheckResult::from_outcome(
+        "dependency policy",
+        passed,
+        "a dependency is licensed in a way this release cannot ship, or comes from somewhere \
+         the policy does not know",
+    ))
+}
+
+/// What somebody else has since found in the code this application runs.
+///
+/// `cargo-audit` fails on a vulnerability and only warns about a crate nobody maintains any
+/// more, which is the right split: the first is a defect in something being shipped, the
+/// second is a fact about its future.
+fn advisories(desktop: &Path) -> Result<CheckResult, String> {
+    if !tools::cargo_subcommand_available("audit") {
+        return Ok(CheckResult::skipped(
+            "advisories",
+            "cargo-audit is not installed, run `cargo install cargo-audit`",
+        ));
+    }
+
+    let passed = tools::run("cargo", &["audit"], desktop)?;
+    Ok(CheckResult::from_outcome(
+        "advisories",
+        passed,
+        "a dependency has a published vulnerability, see the RUSTSEC identifiers above",
     ))
 }
 

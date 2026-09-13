@@ -1,0 +1,53 @@
+# What may be linked into a GPL-3.0-only application, and what may not ship in it at all.
+#
+# `docs/VERIFICATION.md` §4 puts this in the nightly tier. The two questions it answers are
+# different: a licence is a legal fact about the release, and an advisory is a defect somebody
+# else found in code this application runs. Both are checked against the lock file, so the
+# answer is about what would actually be shipped.
+
+[licenses]
+# Permissive licences, plus the one copyleft this project is itself under. A dependency under
+# anything else is not waved through here: it is a decision about the licence of the release,
+# and it belongs to whoever makes releases.
+#
+# Slint is offered under GPL-3.0-only or one of its own paid terms, and this takes the GPL arm
+# --- which is why the application is GPL-3.0-only and not something more permissive.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "GPL-3.0-only",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "NCSA",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+# A crate whose licence cannot be read from its manifest is not a crate whose licence is known.
+unused-allowed-license = "allow"
+
+[advisories]
+# Everything the RustSec database has to say, at the level it says it. Unmaintained crates are
+# a warning rather than a failure: it is a fact worth knowing and not, by itself, a defect.
+unmaintained = "workspace"
+
+[bans]
+# Two versions of the same crate is normal in a tree this size and says nothing about
+# correctness. What is worth refusing is a second copy of something that holds state or keys.
+multiple-versions = "allow"
+
+# A dependency pinned to no version at all is one that can change under a build without the
+# lock file saying why. The crates in this workspace are the exception: they are reached by
+# path, so "any version" means "the one in this checkout".
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

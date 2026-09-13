@@ -17,6 +17,10 @@ edition = "2024"
 license = "GPL-3.0-only"
 rust-version = "1.98"
 
+# None of these go to crates.io. They are reached by path inside this workspace, which is also
+# what lets the dependency policy tell a path dependency apart from an unpinned public one.
+publish = false
+
 [workspace.dependencies]
 photo-sync = { path = "crates/shell" }
 photo-sync-core = { path = "crates/core" }

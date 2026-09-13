@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 # The Rust test client of milestone M1. It speaks the real protocol so that one session can be
 # run against the real desktop and compared with the same session in the simulator.

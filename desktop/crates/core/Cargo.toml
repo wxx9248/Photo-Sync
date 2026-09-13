@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 # This crate holds the logic and performs no input or output. Adding a dependency that touches
 # the filesystem, the network, the clock, or threads breaks the simulator and is not allowed.
