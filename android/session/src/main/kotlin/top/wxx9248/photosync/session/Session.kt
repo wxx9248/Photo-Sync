@@ -51,8 +51,17 @@ class Session(
     /** Whose turn it is among the open streams, so none of them is starved. */
     private var turn = 0
 
-    /** One file on its way: where it is up to, and whether its digest has gone. */
-    private class Lane(val at: Int, var offset: Long, var closed: Boolean = false)
+    /**
+     * One file on its way: where it is up to, how large it was when it opened, and whether
+     * its digest has gone.
+     *
+     * The size is taken once, when the stream opens, and is the size the header stated. Asking
+     * the library again for every chunk is a query to another process each time --- a third of
+     * a session, measured on a real phone --- and it cannot answer a different question than
+     * the header already asked: §6.4 has the desktop compare the header with the catalog, and
+     * a photograph that changes after that is caught by its digest.
+     */
+    private class Lane(val at: Int, val size: Long, var offset: Long, var closed: Boolean = false)
 
     /**
      * How far through the photographs the desktop asked for. §3.4 shows this while it runs.
@@ -254,12 +263,13 @@ class Session(
     private fun open(one: ToSend): Outbound {
         val whole = catalog[one.path]
         val held = library.describe(one.path)
-        flying[one.file] = Lane(at = started, offset = one.resumeOffset)
+        val size = held?.size ?: whole?.size ?: 0
+        flying[one.file] = Lane(at = started, size = size, offset = one.resumeOffset)
         started += 1
         return Outbound.OpenUpload(
             file = one.file,
             path = one.path,
-            size = held?.size ?: whole?.size ?: 0,
+            size = size,
             mtime = held?.mtime ?: whole?.mtime ?: Timestamp(0),
             offset = one.resumeOffset,
         )
@@ -268,7 +278,7 @@ class Session(
     /** The next chunk of one open stream, or the digest that ends it. */
     private fun piece(file: FileId, lane: Lane): Outbound {
         val one = wanted[lane.at]
-        val size = library.describe(one.path)?.size ?: 0
+        val size = lane.size
         if (lane.offset >= size) {
             lane.closed = true
             return Outbound.CloseUpload(file, library.digest(one.path))

@@ -23,6 +23,24 @@ import top.wxx9248.photosync.session.Timestamp
  */
 internal class MediaStoreLibrary(private val resolver: ContentResolver) : Library {
     /**
+     * Where each photograph lives, once it has been looked up.
+     *
+     * A lookup is a query to another process, and on the phone this was measured on it costs
+     * about twenty milliseconds --- which the bytes, the size and the digest were each paying
+     * separately, seven times per photograph. What is remembered is only the path-to-URI
+     * mapping, and that does not change while the row does: a photograph deleted and taken
+     * again under the same name gets a new row, and reading the old one then fails, which
+     * §6.4 already treats as a file that changed mid-session.
+     *
+     * [describe] still asks every time, because the answer it wants is what the phone holds
+     * *now* rather than what it held when the stream opened.
+     */
+    private val located = HashMap<DevicePath, Uri>()
+
+    private fun uriOf(path: DevicePath): Uri? =
+        located[path] ?: find(path)?.first?.also { located[path] = it }
+
+    /**
      * Everything on offer, read once.
      *
      * §3.2 enumerates at the start of a session and holds the result for the whole of it, so
@@ -55,7 +73,7 @@ internal class MediaStoreLibrary(private val resolver: ContentResolver) : Librar
         find(path)?.let { (_, entry) -> entry }
 
     override fun read(path: DevicePath, offset: Long, length: Int): ByteArray {
-        val uri = find(path)?.first ?: return ByteArray(0)
+        val uri = uriOf(path) ?: return ByteArray(0)
         return resolver.openInputStream(uri)?.use { stream ->
             stream.skip(offset)
             val buffer = ByteArray(length)
@@ -77,7 +95,7 @@ internal class MediaStoreLibrary(private val resolver: ContentResolver) : Librar
      * does not fit in memory.
      */
     override fun digest(path: DevicePath): Sha256 {
-        val uri = find(path)?.first ?: return Sha256("0".repeat(64))
+        val uri = uriOf(path) ?: return Sha256("0".repeat(64))
         val sha = MessageDigest.getInstance("SHA-256")
         resolver.openInputStream(uri)?.use { stream ->
             val buffer = ByteArray(1 shl 16)

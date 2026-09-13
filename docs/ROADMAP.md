@@ -237,13 +237,35 @@ file at a time by construction: `next()` returns one message, `sending` indexes 
 nothing moves on until an `UploadAnswered` arrives. Concurrency means several files in flight
 in the most carefully tested part of the phone.
 
-The measurement that justifies it, taken on the MI 8 over Wi-Fi: **about 350 ms per
-photograph**, twelve hundred in roughly seven minutes. A five-thousand-photograph backlog --- a
-plausible first session --- is half an hour. That is the number to beat, and the one to check
-against afterwards.
+The measurement that justified it was about 350 ms per photograph, twelve hundred in roughly
+seven minutes. That number turned out to say less than it looked: those photographs were four
+kilobytes each, so it measured per-file overhead and nothing else, and the desktop answering
+them was a debug build.
 
-Exit: a first session of several thousand photographs is meaningfully faster, measured the
-same way, with the session tests still green.
+Measured again properly --- 150 photographs of about a megabyte each, 161 MB, against a
+release desktop on the same Wi-Fi:
+
+| | per photograph | throughput |
+|---|---|---|
+| one stream | 393 ms | 2.7 MB/s |
+| four streams | 307 ms | 3.5 MB/s |
+
+So concurrency is worth about **1.28x**, which is real and is not the order of magnitude the
+milestone hoped for. The reason is worth writing down: the link between these two machines
+carries **36.8 MB/s** by itself, measured with a plain socket, so a transfer at 3.5 MB/s is
+using a tenth of it and bandwidth is not what it is short of.
+
+Where the time goes, measured on the phone by instrumenting the library: about a third of a
+session was spent in MediaStore lookups --- seven content-provider queries per photograph, at
+roughly twenty milliseconds each. Caching the path-to-URI mapping and asking for a file's size
+once per stream rather than once per chunk halves that, and barely moves the wall clock,
+because the phone spends the time it saves waiting for the desktop instead. What is left is
+the round trip and the desktop's per-file work: write, fsync, verify, rename.
+
+Exit: met in the narrow sense --- four streams, measured, faster, tests green --- and the next
+lever is named rather than taken. Reading and hashing on the phone happen on the one loop that
+also feeds every lane; moving them off it, and measuring the desktop's per-file cost, is where
+the other nine tenths of that link are.
 
 ## Environment
 
