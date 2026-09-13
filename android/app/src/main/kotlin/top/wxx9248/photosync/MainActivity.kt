@@ -17,7 +17,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import top.wxx9248.photosync.media.Deletions
 import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.media.Permissions
@@ -196,13 +198,18 @@ class MainActivity : ComponentActivity() {
             // identifiers would exceed. §8. The batch is kept beside its answer, since that
             // is the granularity a person answers at.
             for (batch in paths.chunked(Deletions.BATCH)) {
-                val request = Deletions.request(contentResolver, library.uris(batch))
+                // Each of these is a media-store query per photograph, and five hundred of
+                // them on the main thread is how a phone stops answering. Rule K11: the
+                // suspending work chooses its own thread; only the launcher needs this one.
+                val request = withContext(Dispatchers.IO) {
+                    Deletions.request(contentResolver, library.uris(batch))
+                }
                 asking.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 if (!answered.receive()) {
                     declined.addAll(batch)
                 }
             }
-            Transfers.removed(library.gone(paths), declined)
+            Transfers.removed(withContext(Dispatchers.IO) { library.gone(paths) }, declined)
         }
 
         WaitingScreen(R.string.transfer_working)

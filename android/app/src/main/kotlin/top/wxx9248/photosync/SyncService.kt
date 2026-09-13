@@ -9,6 +9,7 @@ import android.content.pm.ServiceInfo
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import top.wxx9248.photosync.net.Identity
 import top.wxx9248.photosync.net.Sync
@@ -36,8 +37,9 @@ class SyncService : LifecycleService() {
         )
 
         // Tied to the service, so a session ends when the service does rather than outliving
-        // the notification that justifies it. Rule K9.
-        lifecycleScope.launch {
+        // the notification that justifies it. Rule K9. On the I/O threads, because a session
+        // reads and hashes every photograph it sends and `lifecycleScope` is the main one.
+        lifecycleScope.launch(Dispatchers.IO) {
             runSession()
             stopSelf(startId)
         }
