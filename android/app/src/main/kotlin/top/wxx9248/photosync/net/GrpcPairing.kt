@@ -4,6 +4,7 @@ import android.util.Log
 import io.grpc.ManagedChannel
 import io.grpc.okhttp.OkHttpChannelBuilder
 import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
@@ -180,6 +181,12 @@ internal class GrpcPairing private constructor(
             val channel = OkHttpChannelBuilder.forAddress(address.hostString, address.port)
                 .useTransportSecurity()
                 .sslSocketFactory(context.socketFactory)
+                // A desktop that goes away mid-transfer takes its socket with it and says
+                // nothing. Without these the phone waits on that socket for as long as the
+                // operating system lets it, which is minutes, and §6's rejoin never starts
+                // because the session it would rejoin has not ended.
+                .keepAliveTime(GrpcDesktop.KEEPALIVE_SECONDS, TimeUnit.SECONDS)
+                .keepAliveTimeout(GrpcDesktop.KEEPALIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .overrideAuthority("photo-sync")
                 .build()
             return GrpcPairing(channel, identity, presented, scope)

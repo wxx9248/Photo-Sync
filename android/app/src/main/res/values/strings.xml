@@ -22,6 +22,12 @@
     <string name="pairing_not_open">The computer is there but is not expecting a new phone. On the computer, open the Photo Sync tray menu and choose "Pair a new phone", then try again.</string>
     <string name="no_desktop">The computer did not answer. Is it switched on and on the same network?</string>
 
+    <!-- What the desktop said when it turned a session away. Each one names what to do. -->
+    <string name="refused_busy">The computer is still filing the last batch. Try again in a moment.</string>
+    <string name="refused_space">The computer has run out of room for these photographs.</string>
+    <string name="refused_unpaired">The computer does not recognise this phone any more. Pair it again.</string>
+    <string name="refused_version">The two halves are different versions. Update them both.</string>
+
     <string name="transfer_working">Working…</string>
     <string name="transfer_done">%1$d sent, %2$d freed, %3$d kept.</string>
     <string name="again">Again</string>

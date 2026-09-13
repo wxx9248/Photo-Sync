@@ -16,6 +16,11 @@
     <string name="pairing_not_open">找到了电脑，但它没有在等待新手机。请在电脑上打开照片同步的托盘菜单，选择"配对新手机"，然后再试一次。</string>
     <string name="no_desktop">电脑没有响应。它开着吗？是否和手机在同一个网络？</string>
 
+    <string name="refused_busy">电脑还在整理上一批照片。请稍后再试。</string>
+    <string name="refused_space">电脑上已经没有空间存放这些照片了。</string>
+    <string name="refused_unpaired">电脑已经不认识这台手机了。请重新配对。</string>
+    <string name="refused_version">两端的版本不一致。请把它们都更新。</string>
+
     <string name="transfer_working">正在处理……</string>
     <string name="transfer_done">已发送 %1$d 张，释放 %2$d 张，保留 %3$d 张。</string>
     <string name="again">再来一次</string>

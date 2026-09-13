@@ -31,6 +31,7 @@ import top.wxx9248.photosync.pairing.FilePairingStorage
 import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.Outcome
 import top.wxx9248.photosync.session.Pairing
+import top.wxx9248.photosync.session.RejectReason
 import top.wxx9248.photosync.ui.DoneScreen
 import top.wxx9248.photosync.ui.DoneState
 import top.wxx9248.photosync.ui.FreeUpScreen
@@ -289,9 +290,17 @@ class MainActivity : ComponentActivity() {
             is Outcome.Finished -> DoneScreen(
                 DoneState(sent = outcome.sent, freed = outcome.deleted, kept = outcome.kept)
             ) { Transfers.idle() }
-            // A refusal is the desktop saying not now --- finishing a previous import, or out
-            // of room. §6 has the phone try again rather than treat it as broken.
-            is Outcome.Refused -> WaitingScreen(R.string.no_desktop) { Transfers.idle() }
+            // Each refusal names something different to do about it. They used to share the
+            // "is the computer on?" wording, which was only ever right for one of them.
+            is Outcome.Refused -> WaitingScreen(
+                when (outcome.reason) {
+                    RejectReason.UNREACHABLE -> R.string.no_desktop
+                    RejectReason.COMMIT_IN_PROGRESS -> R.string.refused_busy
+                    RejectReason.NO_SPACE -> R.string.refused_space
+                    RejectReason.NOT_PAIRED -> R.string.refused_unpaired
+                    RejectReason.PROTOCOL_VERSION -> R.string.refused_version
+                }
+            ) { Transfers.idle() }
         }
     }
 }

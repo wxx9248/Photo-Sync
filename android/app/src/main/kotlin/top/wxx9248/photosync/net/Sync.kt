@@ -1,12 +1,14 @@
 package top.wxx9248.photosync.net
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.coroutineScope
 import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.session.DeviceId
 import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.FreeUp
 import top.wxx9248.photosync.session.Outcome
+import top.wxx9248.photosync.session.RejectReason
 import top.wxx9248.photosync.session.PairedDesktop
 import top.wxx9248.photosync.session.Session
 
@@ -38,12 +40,34 @@ internal class Sync(
         ask: suspend (FreeUp) -> Boolean,
         remove: suspend (List<DevicePath>) -> Removal,
     ): Outcome? {
-        val address = Discovery(context).find() ?: return null
-
         val library = MediaStoreLibrary(context.contentResolver)
         // Enumerated once, here, and frozen for the whole session including any reconnect.
         // §3.2.
         val catalog = library.catalog()
+
+        // §6 rejoins a dropped connection by running the handshake again with that same
+        // catalog: the desktop re-diffs, what already arrived drops out, and the work can only
+        // shrink. Nothing is resumed from the phone's side --- a fresh session asks the
+        // desktop what it still needs, which is the same code path that sent the first
+        // photograph.
+        repeat(ATTEMPTS) { attempt ->
+            val outcome = attempt(paired, library, catalog, ask, remove)
+            if (outcome !is Outcome.Refused || outcome.reason != RejectReason.UNREACHABLE) {
+                return outcome
+            }
+            Log.i(TAG, "the connection did not survive; rejoining (${attempt + 1}/$ATTEMPTS)")
+        }
+        return null
+    }
+
+    private suspend fun attempt(
+        paired: PairedDesktop,
+        library: MediaStoreLibrary,
+        catalog: top.wxx9248.photosync.session.Catalog,
+        ask: suspend (FreeUp) -> Boolean,
+        remove: suspend (List<DevicePath>) -> Removal,
+    ): Outcome? {
+        val address = Discovery(context).find() ?: return null
 
         val session = Session(
             device = DeviceId(identity.publicKeyPin().take(16)),
@@ -79,6 +103,16 @@ internal class Sync(
         return session.outcome
     }
 }
+
+private const val TAG = "PhotoSyncSession"
+
+/**
+ * How many times a dropped connection is rejoined before giving up.
+ *
+ * §6 does not put a number on it. Three is enough to ride out a lift or a microwave and few
+ * enough that a desktop which has actually gone away stops being dialled.
+ */
+private const val ATTEMPTS = 3
 
 /** What became of a removal: what went, and what a person turned down. §8 tells them apart. */
 internal interface Removal {

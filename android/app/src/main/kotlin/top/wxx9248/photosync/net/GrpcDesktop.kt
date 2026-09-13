@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import io.grpc.ManagedChannel
 import io.grpc.okhttp.OkHttpChannelBuilder
 import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.selects.select
 import photosync.v1.PhotoSyncGrpcKt
 // The generated messages, under the name the desktop's own adapter gives them.
 import photosync.v1.Sync as Wire
@@ -206,7 +208,14 @@ internal class GrpcDesktop(
      */
     private suspend fun feed(sending: Uploading, piece: Wire.FileChunk) {
         try {
-            sending.pieces.send(piece)
+            // Whichever happens first: the piece goes out, or the call ends without it. A
+            // desktop that disappears mid-file leaves nothing to hand the piece to, and
+            // waiting on that alone is waiting for ever --- which is how a dropped connection
+            // became a phone that said "Working…" and never stopped.
+            select {
+                sending.pieces.onSend(piece) {}
+                sending.answer.onAwait {}
+            }
         } catch (ended: Exception) {
             // The desktop ended the call: it refused the file, or the connection went. A
             // channel whose collector has gone reports that the same way a cancelled caller
@@ -302,15 +311,21 @@ internal class GrpcDesktop(
             whenItFails(failure)
         }
 
-    private fun reasonOf(failure: Throwable): RejectReason {
-        val status = io.grpc.Status.fromThrowable(failure)
-        return when (status.code) {
+    /**
+     * What the desktop's answer means, or that there was not one.
+     *
+     * The catch-all used to be "not paired", which made every dropped connection look like a
+     * phone the desktop had forgotten. A connection that did not survive is [UNREACHABLE],
+     * and §6 rejoins those instead of reporting them.
+     */
+    private fun reasonOf(failure: Throwable): RejectReason =
+        when (io.grpc.Status.fromThrowable(failure).code) {
+            io.grpc.Status.Code.UNAUTHENTICATED -> RejectReason.NOT_PAIRED
+            io.grpc.Status.Code.ABORTED -> RejectReason.COMMIT_IN_PROGRESS
             io.grpc.Status.Code.RESOURCE_EXHAUSTED -> RejectReason.NO_SPACE
-            io.grpc.Status.Code.UNAVAILABLE -> RejectReason.COMMIT_IN_PROGRESS
             io.grpc.Status.Code.FAILED_PRECONDITION -> RejectReason.PROTOCOL_VERSION
-            else -> RejectReason.NOT_PAIRED
+            else -> RejectReason.UNREACHABLE
         }
-    }
 
     private fun hexToBytes(digest: Sha256): ByteString =
         ByteString.copyFrom(digest.hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
@@ -332,6 +347,16 @@ internal class GrpcDesktop(
     companion object {
         /** As many entries as the desktop puts in one message. `STACK.md` §5.3. */
         const val ENTRIES_PER_MESSAGE: Int = 1000
+
+        /**
+         * How often a quiet connection is prodded, and how long an answer is waited for.
+         *
+         * Short enough that a desktop which went away is noticed while somebody is still
+         * holding the phone, long enough not to be chatter on a home network.
+         */
+        const val KEEPALIVE_SECONDS: Long = 15
+
+        const val KEEPALIVE_TIMEOUT_SECONDS: Long = 10
 
         private const val ORIGIN_EARLIER = 2
 
@@ -358,6 +383,12 @@ internal class GrpcDesktop(
             val channel = OkHttpChannelBuilder.forAddress(address.hostString, address.port)
                 .useTransportSecurity()
                 .sslSocketFactory(context.socketFactory)
+                // A desktop that goes away mid-transfer takes its socket with it and says
+                // nothing. Without these the phone waits on that socket for as long as the
+                // operating system lets it, which is minutes, and §6's rejoin never starts
+                // because the session it would rejoin has not ended.
+                .keepAliveTime(KEEPALIVE_SECONDS, TimeUnit.SECONDS)
+                .keepAliveTimeout(KEEPALIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 // The name is not checked — the key is — but a channel needs one to put in
                 // the SNI extension, and "photo-sync" is what the desktop's own certificate
                 // says.

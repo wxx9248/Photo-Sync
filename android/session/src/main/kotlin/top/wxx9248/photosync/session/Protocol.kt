@@ -78,8 +78,14 @@ enum class DeletionResult { DELETED, KEPT_CHANGED, KEPT_USER, FAILED }
 
 data class DeletionOutcome(val path: DevicePath, val result: DeletionResult)
 
-/** Why the desktop turned a session away, in terms a person can be shown. */
-enum class RejectReason { NO_SPACE, COMMIT_IN_PROGRESS, PROTOCOL_VERSION, NOT_PAIRED }
+/**
+ * Why a session ended without finishing, in terms a person can be shown.
+ *
+ * All but the last are the desktop's answers. [UNREACHABLE] is the phone's own: the desktop
+ * never said anything, because the connection did not survive long enough for it to. §6 treats
+ * that as something to rejoin rather than something to report.
+ */
+enum class RejectReason { NO_SPACE, COMMIT_IN_PROGRESS, PROTOCOL_VERSION, NOT_PAIRED, UNREACHABLE }
 
 enum class UploadOutcome { VERIFIED, HASH_MISMATCH, CHANGED_ON_PHONE, WRITE_FAILED }
 
