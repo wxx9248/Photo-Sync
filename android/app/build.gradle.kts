@@ -30,6 +30,22 @@ android {
         compose = true
     }
 
+    // The instrumented tests run against their own copy of the application, under their own
+    // identity. Gradle uninstalls both APKs when a run finishes, and with one identity that
+    // took the real installation with it --- the keystore key and the pairing with it, so a
+    // nightly on a machine with a phone attached left that phone asking for six digits again.
+    testBuildType = "instrumented"
+
+    buildTypes {
+        create("instrumented") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".instrumented"
+            // The library modules have no build type of this name; they answer with their
+            // debug one, which is what this was copied from.
+            matchingFallbacks += listOf("debug")
+        }
+    }
+
     kotlin {
         jvmToolchain(25)
     }

@@ -174,7 +174,10 @@ fn phone_device_tests(root: &Path) -> Result<CheckResult, String> {
 
     let passed = tools::run(
         "./gradlew",
-        &["--quiet", ":app:connectedDebugAndroidTest"],
+        // The instrumented build type, not the ordinary one: Gradle uninstalls what it
+        // installed, and these used to share an identity with the application somebody is
+        // actually using on that phone.
+        &["--quiet", ":app:connectedInstrumentedAndroidTest"],
         &android,
     )?;
     Ok(CheckResult::from_outcome(
