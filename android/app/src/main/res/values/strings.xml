@@ -28,6 +28,8 @@
     <string name="refused_unpaired">The computer does not recognise this phone any more. Pair it again.</string>
     <string name="refused_version">The two halves are different versions. Update them both.</string>
 
+    <string name="transfer_progress">Sending %1$d of %2$d photos.</string>
+    <string name="transfer_failed">%1$d could not be removed from this phone.</string>
     <string name="transfer_working">Working…</string>
     <string name="transfer_done">%1$d sent, %2$d freed, %3$d kept.</string>
     <string name="again">Again</string>

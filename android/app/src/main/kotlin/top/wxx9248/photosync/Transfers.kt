@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.FreeUp
 import top.wxx9248.photosync.session.Outcome
+import top.wxx9248.photosync.session.Progress
 
 /**
  * What the session is doing, for the screen that is not running it.
@@ -31,8 +32,13 @@ internal object Transfers {
         /** Nothing is running. */
         data object Idle : Stage
 
-        /** A desktop is being looked for, or photographs are crossing. */
-        data object Working : Stage
+        /**
+         * A desktop is being looked for, or photographs are crossing.
+         *
+         * The count is null until the desktop has said what it wants, because until then
+         * there is no total to be part of the way through.
+         */
+        data class Working(val progress: Progress? = null) : Stage
 
         /** No desktop answered, which §5.1 treats as "is the computer on?" */
         data object NoDesktop : Stage
@@ -52,8 +58,15 @@ internal object Transfers {
         data class Finished(val outcome: Outcome) : Stage
     }
 
+    /** How far the transfer has got, while it is running. */
+    fun progressed(progress: Progress) {
+        if (current.value is Stage.Working) {
+            current.value = Stage.Working(progress)
+        }
+    }
+
     fun working() {
-        current.value = Stage.Working
+        current.value = Stage.Working()
     }
 
     fun noDesktop() {
@@ -79,7 +92,7 @@ internal object Transfers {
         answering = answer
         current.value = Stage.Asking(freeUp)
         val said = answer.await()
-        current.value = Stage.Working
+        current.value = Stage.Working()
         return said
     }
 
@@ -107,7 +120,7 @@ internal object Transfers {
         removing = carried
         current.value = Stage.Removing(paths)
         val answered = carried.await()
-        current.value = Stage.Working
+        current.value = Stage.Working()
         return answered
     }
 

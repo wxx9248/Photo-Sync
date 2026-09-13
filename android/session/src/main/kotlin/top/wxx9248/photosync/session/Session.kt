@@ -28,6 +28,16 @@ class Session(
     private var sending: Int = 0
     private var offset: Long = 0
 
+    /**
+     * How far through the photographs the desktop asked for. §3.4 shows this while it runs.
+     *
+     * Counted in files rather than bytes: what a person watching wants to know is whether it
+     * is moving and roughly how much is left, and a count of files says both without the
+     * phone having to know how large the remainder is.
+     */
+    val progress: Progress
+        get() = Progress(sent = sending, total = wanted.size)
+
     /** What became of the session, once there is an answer. */
     var outcome: Outcome? = null
         private set
@@ -241,6 +251,9 @@ data class FreeUp(
     val fromEarlier: Int,
     val bytes: Long,
 )
+
+/** How far a transfer has got. */
+data class Progress(val sent: Int, val total: Int)
 
 /** How a session ended. */
 sealed interface Outcome {

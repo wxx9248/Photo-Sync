@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -178,7 +179,12 @@ internal fun PairingScreen(state: PairingState, onLook: () -> Unit) {
 }
 
 /** What a session came to, once there is nothing left to wait for. §3.4. */
-internal data class DoneState(val sent: Long, val freed: Long, val kept: Long)
+internal data class DoneState(
+    val sent: Long,
+    val freed: Long,
+    val kept: Long,
+    val failed: Long,
+)
 
 @Composable
 internal fun DoneScreen(state: DoneState, onAgain: () -> Unit) {
@@ -190,9 +196,48 @@ internal fun DoneScreen(state: DoneState, onAgain: () -> Unit) {
             text = stringResource(R.string.transfer_done, state.sent, state.freed, state.kept),
             style = MaterialTheme.typography.titleMedium,
         )
+        // Only when there were any. §8 counts a photograph the platform would not remove as a
+        // failure, and a summary that leaves them out reads as though nothing happened.
+        if (state.failed > 0) {
+            Text(
+                text = stringResource(R.string.transfer_failed, state.failed),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         Button(onClick = onAgain, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.again))
         }
+    }
+}
+
+/**
+ * What a transfer looks like while it runs. §3.4 shows progress rather than a spinner.
+ *
+ * Counted in photographs, because that is the unit a person has in mind. Until the desktop has
+ * said what it wants there is no total, and a bar with no end is more honest as a line of
+ * text than as a bar pretending to fill.
+ */
+@Composable
+internal fun WorkingScreen(sent: Int?, total: Int?) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        if (sent == null || total == null || total == 0) {
+            Text(
+                text = stringResource(R.string.transfer_working),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            return@Column
+        }
+        Text(
+            text = stringResource(R.string.transfer_progress, sent, total),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        LinearProgressIndicator(
+            progress = { sent.toFloat() / total.toFloat() },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

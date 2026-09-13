@@ -10,6 +10,7 @@ import top.wxx9248.photosync.session.FreeUp
 import top.wxx9248.photosync.session.Outcome
 import top.wxx9248.photosync.session.RejectReason
 import top.wxx9248.photosync.session.PairedDesktop
+import top.wxx9248.photosync.session.Progress
 import top.wxx9248.photosync.session.Session
 
 /**
@@ -39,6 +40,7 @@ internal class Sync(
         paired: PairedDesktop,
         ask: suspend (FreeUp) -> Boolean,
         remove: suspend (List<DevicePath>) -> Removal,
+        report: (Progress) -> Unit = {},
     ): Outcome? {
         val library = MediaStoreLibrary(context.contentResolver)
         // Enumerated once, here, and frozen for the whole session including any reconnect.
@@ -51,7 +53,7 @@ internal class Sync(
         // desktop what it still needs, which is the same code path that sent the first
         // photograph.
         repeat(ATTEMPTS) { attempt ->
-            val outcome = attempt(paired, library, catalog, ask, remove)
+            val outcome = attempt(paired, library, catalog, ask, remove, report)
             if (outcome !is Outcome.Refused || outcome.reason != RejectReason.UNREACHABLE) {
                 return outcome
             }
@@ -66,6 +68,7 @@ internal class Sync(
         catalog: top.wxx9248.photosync.session.Catalog,
         ask: suspend (FreeUp) -> Boolean,
         remove: suspend (List<DevicePath>) -> Removal,
+        report: (Progress) -> Unit,
     ): Outcome? {
         val address = Discovery(context).find() ?: return null
 
@@ -96,7 +99,12 @@ internal class Sync(
                         continue
                     }
                     val said = session.next() ?: break
-                    desktop.say(said)?.let { session.receive(it) }
+                    desktop.say(said)?.let {
+                        session.receive(it)
+                        // Only when the desktop has answered, so a file's worth of chunks does
+                        // not report a thousand times.
+                        report(session.progress)
+                    }
                 }
             }
         }

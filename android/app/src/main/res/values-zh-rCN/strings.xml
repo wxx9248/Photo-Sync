@@ -21,6 +21,8 @@
     <string name="refused_unpaired">电脑已经不认识这台手机了。请重新配对。</string>
     <string name="refused_version">两端的版本不一致。请把它们都更新。</string>
 
+    <string name="transfer_progress">正在发送第 %1$d 张，共 %2$d 张。</string>
+    <string name="transfer_failed">有 %1$d 张没能从这台手机上删除。</string>
     <string name="transfer_working">正在处理……</string>
     <string name="transfer_done">已发送 %1$d 张，释放 %2$d 张，保留 %3$d 张。</string>
     <string name="again">再来一次</string>

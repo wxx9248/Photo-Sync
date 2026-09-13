@@ -61,7 +61,7 @@ class SyncService : LifecycleService() {
 
         Transfers.working()
         val outcome = Sync(applicationContext, Identity.loadOrCreate(), deviceName())
-            .run(paired, Transfers::ask, Transfers::remove)
+            .run(paired, Transfers::ask, Transfers::remove, Transfers::progressed)
 
         if (outcome == null) Transfers.noDesktop() else Transfers.finished(outcome)
     }

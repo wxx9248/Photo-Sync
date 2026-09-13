@@ -45,6 +45,7 @@ import top.wxx9248.photosync.ui.PermissionScreen
 import top.wxx9248.photosync.ui.PermissionState
 import top.wxx9248.photosync.ui.StartScreen
 import top.wxx9248.photosync.ui.WaitingScreen
+import top.wxx9248.photosync.ui.WorkingScreen
 
 /**
  * The window the application opens on.
@@ -226,7 +227,8 @@ class MainActivity : ComponentActivity() {
         val stage by Transfers.stage.collectAsState()
         when (val here = stage) {
             Transfers.Stage.Idle -> StartScreen { SyncService.start(this) }
-            Transfers.Stage.Working -> WaitingScreen(R.string.transfer_working)
+            is Transfers.Stage.Working ->
+                WorkingScreen(here.progress?.sent, here.progress?.total)
             Transfers.Stage.NoDesktop -> WaitingScreen(R.string.no_desktop) { Transfers.idle() }
             is Transfers.Stage.Asking -> FreeUpScreen(
                 FreeUpState(
@@ -288,7 +290,12 @@ class MainActivity : ComponentActivity() {
     private fun Done(outcome: Outcome) {
         when (outcome) {
             is Outcome.Finished -> DoneScreen(
-                DoneState(sent = outcome.sent, freed = outcome.deleted, kept = outcome.kept)
+                DoneState(
+                    sent = outcome.sent,
+                    freed = outcome.deleted,
+                    kept = outcome.kept,
+                    failed = outcome.failed,
+                )
             ) { Transfers.idle() }
             // Each refusal names something different to do about it. They used to share the
             // "is the computer on?" wording, which was only ever right for one of them.
