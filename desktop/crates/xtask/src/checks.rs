@@ -224,7 +224,10 @@ const APPLICATION_CHECKS: [(&str, &str, &str); 3] = [
     ),
     (
         "phone application tests",
-        ":app:testDebugUnitTest",
+        // Named for the build type the instrumented tests use, because AGP generates unit
+        // test tasks only for that one. It is the ordinary debug build with a different
+        // application id, and an application id is not something a JVM test can see.
+        ":app:testInstrumentedUnitTest",
         "the phone's application module failed its own tests",
     ),
     (
