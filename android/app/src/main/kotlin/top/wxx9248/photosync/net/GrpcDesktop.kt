@@ -5,6 +5,8 @@ import io.grpc.ManagedChannel
 import io.grpc.okhttp.OkHttpChannelBuilder
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import javax.net.ssl.SSLContext
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +74,15 @@ import top.wxx9248.photosync.session.UploadOutcome
 internal class GrpcDesktop(
     private val channels: List<ManagedChannel>,
     parent: CoroutineScope,
+    /**
+     * How long a call that is not carrying a file may go unanswered.
+     *
+     * A session has long idle gaps by design: §8 stops and waits for a person, and the answer
+     * can be minutes away. A call with no deadline turns anything that goes wrong in that gap
+     * into a session that waits for ever, which is what a phone did after a person took a
+     * quarter of an hour to answer the prompt. Tests pass something short.
+     */
+    private val patience: Duration = PATIENCE,
 ) : AutoCloseable {
     /**
      * Everything that is not a file goes on the first connection.
@@ -79,7 +90,9 @@ internal class GrpcDesktop(
      * The handshake, the catalog and the diff all happen before any file moves, and the finish
      * after the last one, so this never competes with an upload for the link.
      */
-    private val stub = PhotoSyncGrpcKt.PhotoSyncCoroutineStub(channels.first())
+    private val stub: PhotoSyncGrpcKt.PhotoSyncCoroutineStub
+        get() = PhotoSyncGrpcKt.PhotoSyncCoroutineStub(channels.first())
+            .withDeadlineAfter(patience.inWholeMilliseconds, TimeUnit.MILLISECONDS)
 
     /** One stub per connection in the pool, each carrying at most one upload. */
     private val lanes = channels.map { PhotoSyncGrpcKt.PhotoSyncCoroutineStub(it) }
@@ -427,6 +440,15 @@ internal class GrpcDesktop(
 
         const val KEEPALIVE_TIMEOUT_SECONDS: Long = 10
 
+        /**
+         * How long a call that is not a file may go unanswered before the session gives up.
+         *
+         * Generous, because one of these calls is `Finish`, and what the desktop does inside
+         * it is commit the whole batch --- three and a half thousand photographs took it the
+         * better part of a minute. What this is guarding against is not slowness but silence.
+         */
+        val PATIENCE: Duration = 5.minutes
+
         private const val ORIGIN_EARLIER = 2
 
         /**
@@ -479,6 +501,13 @@ internal class GrpcDesktop(
                     // because the session it would rejoin has not ended.
                     .keepAliveTime(KEEPALIVE_SECONDS, TimeUnit.SECONDS)
                     .keepAliveTimeout(KEEPALIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    // And while nothing is in flight, which is most of a session: §8 stops
+                    // and waits for a person, and between the desktop's candidate list and
+                    // the phone's report there is no call at all. Without this the library
+                    // sends nothing in that gap, and a connection nobody speaks on is one a
+                    // home router is free to forget --- after which both ends hold a socket
+                    // that looks established and carries nothing.
+                    .keepAliveWithoutCalls(true)
                     .flowControlWindow(WINDOW_BYTES)
                     // The name is not checked — the key is — but a channel needs one to put in
                     // the SNI extension, and "photo-sync" is what the desktop's own certificate

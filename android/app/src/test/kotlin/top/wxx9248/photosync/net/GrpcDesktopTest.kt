@@ -32,6 +32,7 @@ import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.FileId
 import top.wxx9248.photosync.session.Inbound
 import top.wxx9248.photosync.session.Outbound
+import top.wxx9248.photosync.session.RejectReason
 import top.wxx9248.photosync.session.Sha256
 import top.wxx9248.photosync.session.Timestamp
 import top.wxx9248.photosync.session.UploadOutcome
@@ -134,7 +135,10 @@ private fun phoning(watching: WatchingDesktop, body: suspend (GrpcDesktop) -> Un
         Loopback(watching).use { wire ->
             val session = CoroutineScope(Job())
             try {
-                GrpcDesktop(wire.pool(GrpcDesktop.POOL), session).use { desktop -> body(desktop) }
+                // Short, so a call that is never answered fails this test rather than
+                // outliving it. What ships is five minutes.
+                GrpcDesktop(wire.pool(GrpcDesktop.POOL), session, patience = 2.seconds)
+                    .use { desktop -> body(desktop) }
             } finally {
                 session.cancel()
             }
@@ -226,6 +230,29 @@ class GrpcDesktopTest {
                 answers,
             )
             assertNull(desktop.answered(), "the driver invented an answer nobody was owed")
+        }
+    }
+
+    /**
+     * The defect this came from: a phone that finished deleting three and a half thousand
+     * photographs said nothing more, for ever. Nothing had crashed --- the call it was waiting
+     * on simply had no deadline, and the connection under it had been idle for a quarter of an
+     * hour while a person decided, long enough for the network in between to forget it.
+     *
+     * A session that cannot be told "the desktop has stopped answering" cannot take §6's
+     * rejoin, which is the whole of its recovery.
+     */
+    @Test
+    fun `a desktop that stops answering ends the call instead of waiting for ever`() {
+        val watching = WatchingDesktop()
+        phoning(watching) { desktop ->
+            val asked = Outbound.Handshake(DeviceId("phone-a"), "Kitchen phone", 1)
+
+            // The fake never answers a handshake. Without a deadline this call outlives the
+            // test's own patience and the run fails on the timeout instead.
+            val answered = desktop.say(asked)
+
+            assertEquals(Inbound.Rejected(RejectReason.UNREACHABLE), answered)
         }
     }
 

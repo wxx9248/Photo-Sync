@@ -10,7 +10,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.wxx9248.photosync.net.Identity
 import top.wxx9248.photosync.net.Sync
@@ -44,8 +44,18 @@ class SyncService : LifecycleService() {
         // §3.3 asks the notification for live progress. It is the only thing a person can see
         // while the screen is off and the application is not in front of them, so it follows
         // the session rather than being written once at the start.
+        //
+        // Paced, because the platform will not take them as fast as a transfer produces them:
+        // a session of three and a half thousand photographs posted several a second and the
+        // system logged `Package enqueue rate is 5.01. Shedding`, dropping them on the floor.
+        // A slow collector on a state flow sees only the newest value --- that is what makes
+        // one conflated --- so waiting here drops what it overtook rather than queueing it,
+        // and the last state of a session is still the one that ends up on screen.
         lifecycleScope.launch {
-            Transfers.stage.collectLatest { stage -> say(wording(stage)) }
+            Transfers.stage.collect { stage ->
+                say(wording(stage))
+                delay(NOTIFICATION_MILLIS)
+            }
         }
 
         // Tied to the service, so a session ends when the service does rather than outliving
@@ -111,6 +121,14 @@ class SyncService : LifecycleService() {
     companion object {
         private const val CHANNEL = "sync"
         private const val NOTIFICATION = 1
+
+        /**
+         * How often the notification may be rewritten, in milliseconds.
+         *
+         * Half a second is under the rate the platform sheds at and over the rate a person
+         * can read at, so what it costs is nothing anybody was going to see.
+         */
+        private const val NOTIFICATION_MILLIS: Long = 500
 
         /**
          * The only thing the phone keeps between sessions. §3.5.
