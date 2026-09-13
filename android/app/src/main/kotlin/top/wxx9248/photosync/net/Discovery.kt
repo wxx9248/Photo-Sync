@@ -7,11 +7,14 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -35,17 +38,53 @@ internal class Discovery(context: Context) {
      * one fails the pinning check rather than doing anything worse.
      */
     suspend fun find(timeout: Duration = LONG_ENOUGH): InetSocketAddress? {
-        val found = withTimeoutOrNull(timeout) {
+        val offered = withTimeoutOrNull(timeout) {
             suspendCancellableCoroutine { waiting ->
                 val looking = FirstDesktop(waiting)
                 Log.i(TAG, "looking for $SERVICE_TYPE for $timeout")
                 manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, looking)
                 waiting.invokeOnCancellation { looking.answer(null) }
             }
+        }.orEmpty()
+
+        if (offered.isEmpty()) {
+            Log.i(TAG, "no desktop answered")
+            return null
         }
-        Log.i(TAG, if (found == null) "no desktop answered" else "found a desktop at $found")
-        return found
+
+        val reachable = reachable(offered)
+        Log.i(
+            TAG,
+            if (reachable == null) {
+                "a desktop answered on $offered and none of it could be reached"
+            } else {
+                "found a desktop at $reachable"
+            },
+        )
+        return reachable
     }
+
+    /**
+     * The first of those addresses that will actually take a connection.
+     *
+     * A desktop advertises every address the machine holds, and a phone can rarely use all of
+     * them: the two can share an address family the network will not route between them, or a
+     * firewall may answer on one stack and not the other. Taking the first and giving up is
+     * how a session fails against a desktop that is plainly there --- which is what happened
+     * the first time this met a real network, on the IPv6 address of a dual-stack machine.
+     */
+    private suspend fun reachable(offered: List<InetSocketAddress>): InetSocketAddress? =
+        withContext(Dispatchers.IO) {
+            offered.firstOrNull { address ->
+                try {
+                    Socket().use { it.connect(address, REACH_MILLIS) }
+                    true
+                } catch (unreachable: Exception) {
+                    Log.i(TAG, "$address did not answer: ${unreachable.message}")
+                    false
+                }
+            }
+        }
 
     /**
      * One attempt: the first desktop that resolves, and nothing after it.
@@ -56,11 +95,11 @@ internal class Discovery(context: Context) {
      * cancellation the timeout causes.
      */
     private inner class FirstDesktop(
-        private val waiting: CancellableContinuation<InetSocketAddress?>,
+        private val waiting: CancellableContinuation<List<InetSocketAddress>?>,
     ) : NsdManager.DiscoveryListener {
         private val answered = AtomicBoolean(false)
 
-        fun answer(address: InetSocketAddress?) {
+        fun answer(address: List<InetSocketAddress>?) {
             if (!answered.compareAndSet(false, true)) return
             runCatching { manager.stopServiceDiscovery(this) }
             waiting.resume(address)
@@ -98,8 +137,10 @@ internal class Discovery(context: Context) {
 
             override fun onServiceResolved(info: NsdServiceInfo?) {
                 val resolved = info ?: return
-                val host = resolved.address ?: return
-                answer(InetSocketAddress(host, resolved.port))
+                val addresses = resolved.addresses.map { InetSocketAddress(it, resolved.port) }
+                if (addresses.isNotEmpty()) {
+                    answer(addresses)
+                }
             }
         }
     }
@@ -111,15 +152,25 @@ internal class Discovery(context: Context) {
          * `hostAddresses` is the one to use and it is not on every phone this application
          * supports: it arrived in Android 14, and on Android 13 only with the seventh
          * Tiramisu extension. `SPEC.md` §3.1 starts at Android 12, so the older call is what
-         * the floor of that range has. Both return the same address.
+         * the floor of that range has. The older one knows of a single address, which is the
+         * best it can do.
          */
-        private val NsdServiceInfo.address: InetAddress?
+        private val NsdServiceInfo.addresses: List<InetAddress>
             get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                hostAddresses.firstOrNull()
+                hostAddresses
             } else {
                 @Suppress("DEPRECATION")
-                host
+                listOfNotNull(host)
             }
+
+        /**
+         * How long one address is given to answer.
+         *
+         * Short: an address on the same network answers in milliseconds, and an address that
+         * cannot be routed to is usually refused rather than left hanging. What this bounds is
+         * the unusual case where it is neither.
+         */
+        private const val REACH_MILLIS = 2_000
 
         private const val TAG = "PhotoSyncDiscovery"
 
