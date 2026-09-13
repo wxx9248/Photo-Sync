@@ -200,12 +200,36 @@ what breaks worst.
 5. **Nothing reconnects.** `Sync.run` runs its loop once. §6 is written around reconnection
    being the ordinary recovery path and the phone never takes it.
 
-6. **Smaller, and real.** `Outcome.Refused` renders as "the computer did not answer"; there is
-   no per-file progress, only "Working…"; one file crosses at a time where §6.4 allows
-   several.
+6. **Smaller, and real.** `Outcome.Refused` rendered as "the computer did not answer"
+   whatever the desktop had said; there was no per-file progress, only "Working…"; and the
+   summary left failures out, so a photograph the platform would not remove showed as nothing
+   at all. All three are done.
 
 Exit: a phone that has never been paired can be set up, fill a vault, free its own space, and
 survive the screen going off --- on one of the brands `SPEC.md` §3.1 names.
+
+Items 1 to 6 are done, each driven on a Xiaomi MI 8 rather than reasoned about. What the exit
+still wants is the last clause: a transfer that survives the screen going off has been asked
+for but never watched.
+
+### M11 One file at a time
+
+Goal: §6.4's "multiple concurrent file streams to utilize full bandwidth", on the phone. The
+desktop has been built for them since M6 and the phone opens one.
+
+This was on M10's list and does not belong there. The others were wiring, naming, or a call in
+the wrong place; this is a change to the shape of the session state machine, which decides one
+file at a time by construction: `next()` returns one message, `sending` indexes one file, and
+nothing moves on until an `UploadAnswered` arrives. Concurrency means several files in flight
+in the most carefully tested part of the phone.
+
+The measurement that justifies it, taken on the MI 8 over Wi-Fi: **about 350 ms per
+photograph**, twelve hundred in roughly seven minutes. A five-thousand-photograph backlog --- a
+plausible first session --- is half an hour. That is the number to beat, and the one to check
+against afterwards.
+
+Exit: a first session of several thousand photographs is meaningfully faster, measured the
+same way, with the session tests still green.
 
 ## Environment
 
