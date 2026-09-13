@@ -10,6 +10,8 @@ pub(crate) enum Command {
     Mutants { module: Option<String> },
     Replay { seed: String },
     SelfTest,
+    Metrics,
+    Measure,
     ProtectedArtifacts { against: String },
 }
 
@@ -63,6 +65,9 @@ pub(crate) fn parse(arguments: &[String]) -> Result<Command, String> {
             seed: (*seed).to_string(),
         }),
         ["verify", "self-test"] | ["self-test"] => Ok(Command::SelfTest),
+        ["verify", "metrics"] | ["metrics"] => Ok(Command::Metrics),
+        // How the optimised build of this same program is asked to do the measuring.
+        ["verify", "metrics", "--measure"] | ["metrics", "--measure"] => Ok(Command::Measure),
         _ => Err(format!("unrecognised arguments: {}", words.join(" "))),
     }
 }
@@ -81,6 +86,7 @@ pub(crate) fn usage() -> String {
         "  mutants [module]               does the suite detect a wrong implementation?",
         "  replay <seed>                  one campaign run, exactly as it happened",
         "  self-test                      does the harness notice a desktop that is wrong?",
+        "  metrics                        how fast the desktop is, against the last accepted run",
         "  protected-artifacts --against <ref>",
     ]
     .join("\n")

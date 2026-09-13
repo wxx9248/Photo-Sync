@@ -6,7 +6,9 @@ use std::path::Path;
 use crate::cli::Tier;
 use crate::report::{Campaign, CheckResult, Failure, Report, Requirements};
 use crate::requirements::{Registry, Status};
-use crate::{campaign, coverage, mutants, scenario, selftest, spec_check, tools, workspace};
+use crate::{
+    campaign, coverage, metrics, mutants, scenario, selftest, spec_check, tools, workspace,
+};
 
 /// Paths that define correctness. Changing one without changing the specification is the
 /// failure mode the gate exists to catch.
@@ -90,6 +92,13 @@ pub(crate) fn run_tier(root: &Path, tier: Tier) -> Result<bool, String> {
             selftest::run(root)?,
             "the harness did not notice a desktop that was wrong",
         ));
+
+        // Measured last, because everything before it competes for the same disk and the
+        // numbers are about the disk as much as about the code.
+        match metrics::run(root) {
+            Ok(measured) => report.measured(measured),
+            Err(error) => report.add(CheckResult::skipped("metrics", &error)),
+        }
     }
 
     report.finish(&workspace::reports_directory(root))?;

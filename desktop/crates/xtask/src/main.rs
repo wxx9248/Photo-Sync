@@ -12,6 +12,7 @@ mod checks;
 mod cli;
 mod coverage;
 mod doctor;
+mod metrics;
 mod mutants;
 mod report;
 mod requirements;
@@ -57,6 +58,10 @@ fn run(command: Command) -> Result<bool, String> {
         Command::Doctor => doctor::run(&root),
         Command::Mutants { module } => mutants::run(&root, module.as_deref()),
         Command::SelfTest => selftest::run(&root),
+        // Never a gate, so this always says it succeeded: what it produces is numbers, and
+        // whether one of them moved is a person's judgement.
+        Command::Metrics => metrics::run(&root).map(|_| true),
+        Command::Measure => metrics::measure_and_compare(&root).map(|_| true),
         Command::Replay { seed } => {
             let outcome = campaign::replay_one(&seed)?;
             campaign::print_failures(&outcome);

@@ -1,0 +1,6 @@
+{
+  "transfer.photographs_per_second": 2.994,
+  "transfer.megabytes_per_second": 28.351,
+  "diff.seconds_for_50000_entries": 0.877,
+  "commit.seconds_for_1000_entries": 3.701
+}

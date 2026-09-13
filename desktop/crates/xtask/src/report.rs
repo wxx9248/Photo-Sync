@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -78,6 +78,65 @@ pub(crate) struct Failure {
     pub diff: String,
 }
 
+/// One number worth watching between runs. `docs/VERIFICATION.md` §5.
+///
+/// Never a gate. A machine that was busy answers slower and says nothing about the code, so a
+/// measurement that moved is a thing to look at rather than a thing to fail.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct Metric {
+    pub name: String,
+    pub value: f64,
+    pub unit: String,
+
+    /// Whether a larger number is the better one, which is what decides a regression.
+    pub more_is_better: bool,
+
+    /// What the last accepted run of this measurement said, when there is one.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub baseline: Option<f64>,
+
+    /// Set when this run is worse than the baseline by more than the tolerance.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub regressed: bool,
+}
+
+impl Metric {
+    pub(crate) fn more_is_better(name: &str, value: f64, unit: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            value,
+            unit: unit.to_string(),
+            more_is_better: true,
+            baseline: None,
+            regressed: false,
+        }
+    }
+
+    pub(crate) fn less_is_better(name: &str, value: f64, unit: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            value,
+            unit: unit.to_string(),
+            more_is_better: false,
+            baseline: None,
+            regressed: false,
+        }
+    }
+
+    /// Compares this run with the last accepted one, at the tolerance a shared machine needs.
+    pub(crate) fn against(&mut self, baseline: Option<f64>, tolerance: f64) {
+        let Some(was) = baseline else {
+            return;
+        };
+        self.baseline = Some(was);
+        self.regressed = if self.more_is_better {
+            self.value < was * (1.0 - tolerance)
+        } else {
+            self.value > was * (1.0 + tolerance)
+        };
+    }
+}
+
 /// What a run of made-up sessions found.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Campaign {
@@ -98,6 +157,10 @@ pub(crate) struct Report {
     /// Absent until a tier that runs one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub campaign: Option<Campaign>,
+
+    /// Empty except in a tier that measures.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub metrics: Vec<Metric>,
 }
 
 impl Report {
@@ -111,7 +174,12 @@ impl Report {
             checks: Vec::new(),
             failures: Vec::new(),
             campaign: None,
+            metrics: Vec::new(),
         }
+    }
+
+    pub(crate) fn measured(&mut self, metrics: Vec<Metric>) {
+        self.metrics = metrics;
     }
 
     pub(crate) fn ran(&mut self, campaign: Campaign) {

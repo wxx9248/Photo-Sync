@@ -34,6 +34,11 @@ pub(crate) fn scenarios_directory(root: &Path) -> PathBuf {
     root.join("verification/scenarios")
 }
 
+/// Where the numbers a nightly watches are kept between runs.
+pub(crate) fn metrics_directory(root: &Path) -> PathBuf {
+    root.join("verification/metrics")
+}
+
 /// Where the Android SDK is, if this machine has one.
 ///
 /// The application module needs it and the session module does not, so it is asked about

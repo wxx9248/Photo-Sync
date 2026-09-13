@@ -353,11 +353,33 @@ Two kinds, kept apart because they fail differently:
   enough HTTP/2 to ask; the pool size is asserted on the phone, where the session's lane count
   and the driver's connection count are the same decision. A regression here is a silent
   throughput collapse, and this catches it without depending on machine speed.
-* **Tracked metrics (not gated).** Loopback throughput for a synthetic 2 GB transfer with
-  hashing in the path, catalog diff time for a 50,000-entry library, and commit time for a
-  10,000-entry batch (which the spec claims is pure metadata work). Recorded per nightly run and
-  compared against a rolling baseline; a regression opens a report entry rather than failing a
-  build, because timing on a shared machine is noisy.
+* **Tracked metrics (not gated).** Four numbers, measured over a real socket against a real
+  desktop by a phone that is a program in the same process --- no MediaStore, no Wi-Fi, so what
+  is left is the desktop's own cost:
+
+  | metric | what it is for |
+  |---|---|
+  | `transfer.photographs_per_second` | 150 photographs of a megabyte: **per-file** cost, which on a spinning disk is almost all durability points |
+  | `transfer.megabytes_per_second` | one 256 MB file: **per-byte** cost — hashing, writing, TLS |
+  | `diff.seconds_for_50000_entries` | §6.1 submitting and §6.2 diffing a large library |
+  | `commit.seconds_for_1000_entries` | §7.3's claim that a commit is pure metadata work |
+
+  They run in the nightly tier and from `./verify metrics`, always in an **optimised build**:
+  the harness itself is unoptimised, and a desktop built that way answers several times slower,
+  so a number from it would be a number about `cargo build`. The scratch vault sits under
+  `verification/metrics/` rather than in `/tmp`, which on many machines is memory --- the same
+  code measures about six times faster on tmpfs than on a disk, and both are true.
+
+  Each is compared with `verification/metrics/baseline.json`, the last run somebody accepted.
+  Moving more than a quarter, in the direction that is worse, prints a line and marks the metric
+  in the report. Nothing fails: timing on a machine that is also doing something else is noisy,
+  and a suite that goes red for that teaches people to ignore it. To accept a new number, copy
+  the values from `verification/metrics/latest.json` into the baseline in a commit that says
+  why.
+
+  The sizes are smaller than this document first asked for --- it wanted 2 GB and a
+  10,000-entry commit. Both were cut to what a nightly can finish on a machine whose vault is a
+  5400 rpm disk, where staging one file costs about four durability points whatever its size.
 
 ## 6. Where it runs
 
