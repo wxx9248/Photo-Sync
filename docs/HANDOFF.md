@@ -30,12 +30,13 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 ### Run it somewhere this machine cannot
 
 - [ ] **The Android instrumented tests on an emulator.** They run here against a phone on a
-      cable, which closed `R-CATALOG-001` and `R-CATALOG-002`, and the nightly tier runs them
-      whenever one is attached. The emulator is still the gap: the guest boots --- init reaches
-      `surfaceflinger`, `adbd` and `bootanim`, and `adb` sees the device --- and then the
-      emulator process exits with status 1 and no message a minute or two in, with Gradle's
-      managed-device path failing the same way. That only matters for a machine with no phone
-      to plug in, which is what a build server is. (§13, §16)
+      cable --- the nightly tier runs them whenever one is attached, and they now install under
+      their own application id so a run cannot uninstall the application somebody is using. The
+      emulator has never stayed up: the guest boots, `adb` sees it, and the emulator process
+      exits with status 1 and no message a minute or two in. That was blamed on nested
+      virtualisation, which was true of the machine it was written on and is **not** true of
+      this one --- it is a real machine, so the diagnosis is open again. It matters only for a
+      machine with no phone to plug in, which is what a build server is. (§13, §16)
 - [ ] **Discovery on an Android 12 or 13 phone.** It works across a home router on Android 15,
       which is what the rewrite in §15 needed. The floor of the supported range is still
       untried, and that is where §16's lint error would have thrown. (§11, §15, §16)
@@ -53,14 +54,9 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 - [ ] **§7.4's parenthetical.** It justifies recovery by an inference the desktop does not
       make, and is safer for not making it. Reword the specification, or leave it. (§9)
-- [ ] **A vault with more than one writer.** Today a file that appears at a reserved name is
-      renamed over and the photograph wins. If a vault might ever sit on a synced folder or a
-      network share, that trade is worth confirming. (§9)
 - [ ] **The SQLite virtual file system.** Outstanding since M2 with three ways forward written
       out. Nothing since has needed it, and a crash inside SQLite's own writing is still not
       modelled. (§5)
-- [ ] **Pairing has no deadline.** A window a person opens stays open until a phone pairs or
-      somebody closes it. (§4)
 - [ ] **The F-Droid signing keystore.** Make it, and back it up off the machine, before the
       first release. Losing it re-identifies every phone in the house. `packaging/fdroid/`
       says why at length. (§14)
@@ -81,6 +77,23 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 - **The JDK.** You chose 25; `DEVELOPMENT.md` says so, both halves target it, and the setup
   command it documents now works. Kotlin is 2.4.20 and Gradle 9.7.1, both current, with the
   wrapper checked in.
+- **A vault with more than one writer.** Decided: the current behaviour is right. Staging is
+  per device, so two phones cannot collide while sending; §7.2 gives every vault copy a free
+  name, so a commit cannot overwrite one either. A photograph arriving again at a path the same
+  phone already sent is a re-transmit, and the later one wins --- which is what the index does,
+  keyed `(device_id, device_path)` so the new row replaces the old. The earlier vault copy stays
+  where it is. What is unchanged is the edge the question came from: a *foreign* file sitting at
+  a name the vault wants is renamed over, and the photograph wins.
+- **Pairing has no deadline.** Decided: fine as it is. A window a person opened stays open until
+  a phone pairs or somebody closes it.
+- **The SQLite virtual file system.** Decided: not built, and the documents no longer say it is.
+  `STACK.md` §6 and `VERIFICATION.md` §L3 both described a custom VFS as though it existed; what
+  exists is nothing, and `rsqlite-vfs` in the lock file is incidental --- rusqlite pulls it in
+  for a wasm target this project never builds. So there was no code to remove, only two claims.
+  A crash goes on treating both databases as intact, which is sound for WAL with
+  `synchronous = FULL`: a transaction that returned survived, one that did not never existed.
+  **That argument is what would have to be revisited if the durability work lowers
+  `synchronous`** --- see §18.
 - **One real session, end to end.** Desktop and phone on a home network: paired by comparing
   six digits, twelve hundred photographs across, the vault filled, space freed three ways, a
   desktop restart rejoined, and a screen-off transfer through deep idle. M9's exit, and every

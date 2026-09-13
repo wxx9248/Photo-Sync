@@ -470,17 +470,23 @@ executable model, the requirement registry, and the gates that define "done" —
 |---|---|
 | `cargo-nextest` | test runner; per-test process isolation and machine-readable results |
 | `proptest` | property generation and automatic shrinking of failing traces |
-| `sqlite-vfs` / `libsqlite3-sys` | custom VFS so SQLite runs on the simulated filesystem |
+| `libsqlite3-sys` | SQLite itself, through rusqlite |
 | `cargo-mutants` | meta-oracle: does the suite detect a wrong implementation? |
 | `cargo-deny`, `cargo-audit` | dependency licence policy and advisory audit |
 | `insta` | snapshot assertions for report and scenario output |
 | Gradle Managed Devices (ATD) | headless, reproducible Android instrumentation runs |
 | `cargo xtask` | the `./verify` runner; pure Rust, no extra tooling to install |
 
-Two consequences reach back into the stack itself. The core crate must not depend on any I/O
-crate, which is why §3.3 splits core from shell. And SQLite is reached through rusqlite in a way
-that permits registering a custom VFS, so the manifest and write-log of §3.5 can be crash-tested
-inside the simulator rather than trusted.
+One consequence reaches back into the stack itself: the core crate must not depend on any I/O
+crate, which is why §3.3 splits core from shell.
+
+A second was planned and is not built. SQLite was to be reached through a custom VFS so the
+manifest and write-log of §3.5 could be crash-tested inside the simulator rather than trusted.
+The crate that would do it leaves its WAL index unfinished, and both databases run in WAL, so
+a simulator using it would be testing storage the product does not use. A crash therefore
+treats both databases as intact --- sound while they run `synchronous = FULL`, because a
+transaction that returned survived and one that did not never existed. Lowering that setting
+would take the argument with it. `docs/HANDOFF.md` §5 has the three ways forward.
 
 ## 7. License
 

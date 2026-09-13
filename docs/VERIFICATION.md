@@ -70,7 +70,7 @@ injector at once.
 L6  runner · reports · gates · negative controls
 L5  acceptance scenarios (TOML)
 L4  cross-language conformance (vectors · fake peers · real-bytes E2E)
-L3  deterministic simulator (clock · network · filesystem · SQLite VFS · crashes)
+L3  deterministic simulator (clock · network · filesystem · crashes)
 L2  executable model (the oracle)
 L1  ports and fault injection
 L0  requirement registry
@@ -121,7 +121,7 @@ Every side effect the core can emit is served by a port trait in the shell:
 | Port | Methods | Injected faults |
 |---|---|---|
 | `FileOps` | `create`, `write_at`, `sync_data`, `sync_dir`, `rename`, `remove`, `set_len`, `metadata` | fail at operation *N*, `ENOSPC`, `EIO`, short write, silent no-op fsync |
-| `Db` | `begin`, `execute`, `query`, `commit` | commit failure, crash mid-transaction (via the VFS, §L3) |
+| `Db` | `begin`, `execute`, `query`, `commit` | commit failure; a crash leaves the database intact, see §L3 |
 | `Clock` | `now`, `sleep_until` | arbitrary wall-clock values, skew, non-monotonic jumps |
 | `Rng` | `next_u64` | seeded, replayable |
 | `Net` | `send`, `recv`, `close` | drop, delay, reorder, disconnect mid-stream |
@@ -170,12 +170,15 @@ plus one step budget reproduces a run exactly.
 | crash | all non-durable state is discarded; the tail of the last written page may be torn or zero-filled; unsynced writes may be dropped out of order |
 | `ENOSPC` | injectable at any write or rename |
 
-**SQLite lives inside the simulation.** A custom VFS (`xOpen`/`xRead`/`xWrite`/`xSync`/
-`xTruncate`/`xDelete`/`xAccess`/`xLock`) is registered against the simulated filesystem, so the
-staging manifest and the commit write-log — the two artifacts carrying the §7.3/§7.6 durability
-claims — crash the way real storage crashes, and SQLite's own WAL recovery runs for real inside
-the simulator. Without this, the most load-bearing claims in the spec would be the only ones the
-simulator could not see.
+**SQLite does not live inside the simulation, and this is the instrument's largest gap.** The
+plan was a custom VFS registered against the simulated filesystem, so the staging manifest and
+the commit write-log — the two artifacts carrying the §7.3/§7.6 durability claims — would crash
+the way real storage crashes. It is not built: the crate that would do it leaves the WAL index
+unfinished, and running the simulator's SQLite in a different journal mode from production would
+test storage the product does not use. A crash therefore leaves both databases intact, which is
+sound only while they run `synchronous = FULL` — a transaction that returned survived, one that
+did not never existed. Anything that lowers that setting takes the argument with it and makes
+this gap real. `docs/HANDOFF.md` §5 has the three ways forward.
 
 **Simulated network and lifecycle.** Connection drops mid-stream, delayed and reordered
 delivery, a phone that reconnects during a commit, two phones committing concurrently, a phone
