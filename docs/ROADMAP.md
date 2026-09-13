@@ -189,6 +189,10 @@ what breaks worst.
    battery-optimisation exemption, the per-brand autostart steps. The exemption is declared
    and never requested. §3.3 says an ordinary background process on the target phones is
    killed within minutes, so a long transfer with the screen off does not finish.
+   Half-finished on the first pass: onboarding asks for all three, but the partial wake lock,
+   the Wi-Fi lock and the live progress §3.3 names beside the foreground service were not
+   built, and the steps were chosen by `Build.MANUFACTURER` rather than by the system software
+   that has the menus. Both are done now, under `R-ALIVE-001` and `R-ALIVE-002`.
 
 3. **The phone gives up on the first address.** `hostAddresses.firstOrNull()` with no
    fallback, so a desktop advertising both stacks is a coin toss per session.
@@ -208,9 +212,19 @@ what breaks worst.
 Exit: a phone that has never been paired can be set up, fill a vault, free its own space, and
 survive the screen going off --- on one of the brands `SPEC.md` §3.1 names.
 
-Items 1 to 6 are done, each driven on a Xiaomi MI 8 rather than reasoned about. What the exit
-still wants is the last clause: a transfer that survives the screen going off has been asked
-for but never watched.
+Items 1 to 6 are done, each driven on a Xiaomi MI 8 rather than reasoned about.
+
+The last clause of the exit was watched rather than assumed. With the screen off, the battery
+reported unplugged and idle forced to deep, five hundred photographs crossed; a control run
+with the battery exemption taken away moved four hundred more the same way. The exemption is
+not what carries a transfer through Doze on stock Android --- a `dataSync` foreground service
+is outside Doze's network restrictions either way --- and the measurement is worth as much for
+saying that as for passing.
+
+What it does not show is the case §3.1 step 4 is written about. That phone runs a community
+build of Android, so the aggressive task-killing of MIUI and ColorOS is simply absent from it,
+and no test on this device can reach it. Running the brand steps on a phone with the
+manufacturer's own system on it is still a person's job, and `docs/HANDOFF.md` §0 says so.
 
 ### M11 One file at a time
 

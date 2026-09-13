@@ -16,55 +16,38 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 ### Look at it
 
-- [ ] **The desktop window has never been rendered.** No display on the development machine.
-      `cd desktop && cargo run --bin photo-sync`. Worth your eyes: whether the stock
-      `camera-photo` tray icon reads as this application on Plasma; whether the progress line
-      is legible during a real transfer; and the sentence under the vault box, which is the one
-      place the interface has to talk somebody out of an assumption. (§12)
-- [ ] **The phone's screens have never been rendered either**, for the same reason plus the
-      emulator below. (§13)
+- [ ] **The desktop window, with your eyes on it.** It renders --- a Plasma session drove
+      pairing, a transfer and the tray --- so what is left is judgement rather than existence:
+      whether the stock `camera-photo` tray icon reads as this application, whether the
+      progress line is legible during a real transfer, and the sentence under the vault box,
+      which is the one place the interface has to talk somebody out of an assumption. (§12)
+- [ ] **The phone's screens, likewise.** Onboarding, pairing, a transfer and §8's prompt have
+      all been through on a real handset. Nobody has judged them. (§13)
 - [ ] **Both Simplified Chinese translations were written without a native reader** — the
       desktop window and the phone's strings. `LANG=zh_CN.UTF-8 cargo run --bin photo-sync`.
       (§12, §13)
 
 ### Run it somewhere this machine cannot
 
-- [ ] **The Android instrumented tests.** They compile and have never executed. With the SDK,
-      the emulator and a system image all installed here, the guest now boots properly --- init
-      reaches `surfaceflinger`, `adbd` and `bootanim`, and `adb` sees the device --- and then the
-      emulator process on the host exits with status 1 and no message, a minute or two in.
-      Renderer, memory and core count make no difference, and Gradle's managed-device path
-      fails the same way. This development machine is itself a virtual machine, so the
-      emulator runs nested, and the kernel log shows its vcpu being created and torn down on
-      each attempt. That is the likeliest reason and it is not the project's. On a machine
-      where an emulator stays up: `cd android && ./gradlew :app:phoneDebugAndroidTest`. Four
-      tests, all about what MediaStore does rather than what this code does with the answer.
-      When they pass, `R-CATALOG-001` and `R-CATALOG-002` can move to active. (§13, §16)
-- [ ] **Discovery against a real phone.** The responder is checked against another Rust daemon
-      on this machine; multicast across a home router and `NsdManager`'s reading of the records
-      are what only a real network answers. The phone's side of it was rewritten in §15 and has
-      never run. Worth doing on an Android 12 or 13 phone in particular: that is where §16's
-      lint error would have thrown. (§11, §15, §16)
+- [ ] **The Android instrumented tests on an emulator.** They run here against a phone on a
+      cable, which closed `R-CATALOG-001` and `R-CATALOG-002`, and the nightly tier runs them
+      whenever one is attached. The emulator is still the gap: the guest boots --- init reaches
+      `surfaceflinger`, `adbd` and `bootanim`, and `adb` sees the device --- and then the
+      emulator process exits with status 1 and no message a minute or two in, with Gradle's
+      managed-device path failing the same way. That only matters for a machine with no phone
+      to plug in, which is what a build server is. (§13, §16)
+- [ ] **Discovery on an Android 12 or 13 phone.** It works across a home router on Android 15,
+      which is what the rewrite in §15 needed. The floor of the supported range is still
+      untried, and that is where §16's lint error would have thrown. (§11, §15, §16)
 - [ ] **A video, across the wire.** The phone used to gather a whole file in memory before
       sending it, so anything larger than free RAM could not cross. It streams now, and a test
       holds it to that. What the test cannot show is the number: send a photograph and then a
       long video, and watch the phone's memory while it goes. (§15, §16)
-- [ ] **Closing the window leaves the desktop running.** It used to stop everything --- tray,
-      advertisement and listener --- so a phone could not find the desktop until somebody opened
-      it again. Fixed, and confirmed here by closing the window from a KWin script and watching
-      the process stay up. `R-UI-004` is deferred because nothing in the suite can close a
-      window. Close it with the mouse, then check the tray icon is still there and a phone
-      still syncs. (§17)
-- [ ] **Restart the desktop after pairing.** It read its paired phones from a path nothing
-      wrote to, so it woke up knowing nobody. Fixed, and unreachable by any test, because the
-      defect was in `main`. Pair a phone, quit the desktop, start it again, and check the phone
-      still syncs without showing a code. (§15)
-- [ ] **One real session, end to end.** Desktop and phone, same network, a photograph across
-      and freed. This is M9's exit and the only thing that exercises every piece at once. (§14)
-- [ ] **Throughput.** The real server takes its lock per message rather than per file, which is
-      what makes streaming and concurrent transfers work. Nothing has measured the cost on a
-      real network, and it is the one change whose price is not visible from inside the
-      repository. (§8, §9)
+- [ ] **Closing the window with the mouse.** It used to stop everything --- tray,
+      advertisement and listener. Fixed, and confirmed by closing the window from a KWin script
+      and watching the process stay up, but a script is not a person: close it by hand, then
+      check the tray icon is still there and a phone still syncs. `R-UI-004` stays deferred
+      because nothing in the suite can close a window. (§17)
 
 ### Decide
 
@@ -86,15 +69,25 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 - [ ] **The private key's permissions.** Written owner-only and asserted by a test, but a umask
       is the sort of thing that differs. (§4)
-- [ ] **The OEM keep-alive steps.** `docs/INSTALL.md` has a table per brand, written from the
+- [ ] **The OEM keep-alive steps.** `docs/INSTALL.md` has a table per system, written from the
       specification rather than from a phone in hand. Each row is a guess until somebody
-      follows it on that brand. (§14)
+      follows it on a phone running that system. The application now decides which row to show
+      by looking for the manufacturer's own power manager, so the same phone confirms both the
+      steps and the detection --- and a phone carrying a community build of Android should be
+      shown nothing at all. (§14, §17)
 
 ### Closed since these were written
 
 - **The JDK.** You chose 25; `DEVELOPMENT.md` says so, both halves target it, and the setup
   command it documents now works. Kotlin is 2.4.20 and Gradle 9.7.1, both current, with the
   wrapper checked in.
+- **One real session, end to end.** Desktop and phone on a home network: paired by comparing
+  six digits, twelve hundred photographs across, the vault filled, space freed three ways, a
+  desktop restart rejoined, and a screen-off transfer through deep idle. M9's exit, and every
+  piece at once. Restarting the desktop after pairing is inside it --- the phone syncs again
+  without showing a code.
+- **Throughput.** About 350 ms per photograph on that phone over Wi-Fi, twelve hundred in
+  roughly seven minutes. That is the number `docs/ROADMAP.md` M11 has to beat.
 - **The pairing code across languages.** `verification/vectors/pairing.tsv` states the six
   digits for a set of key pairs, computed from the written derivation rather than from either
   implementation, and both ends answer it. That was the vector M8 owed.
@@ -621,3 +614,44 @@ could confirm when they were written.
   fails on errors only; making warnings fail would mean settling all eight first.
 - **The emulator.** See §0. The guest boots; the emulator process does not stay up, most
   likely because this machine is a virtual machine and the emulator is a second one inside it.
+
+## 17. What the screen going off turned up
+
+M10's exit asks for a transfer that survives the screen going off. It had been asked for and
+never watched, so it was watched: a phone with five hundred fresh photographs on it, the
+screen off, the battery reported unplugged and idle forced to deep. All five hundred crossed.
+A second run with the battery exemption taken away moved four hundred more, which is the part
+worth keeping --- on stock Android a `dataSync` foreground service is outside Doze's network
+restrictions whether or not the application is on the battery whitelist. The exemption §3.1
+asks for matters for alarms, jobs and starting a service from the background, not for a
+service already running.
+
+That result also says what was *not* tested. The phone runs a community build of Android, so
+none of the manufacturer task-killing §3.1 step 4 is written about is present on it. The
+clause that matters most to a family is the one this device cannot reach.
+
+**Two defects, found only because the run was watched.**
+
+`KeepAlive.brandSteps` chose the steps from `Build.MANUFACTURER`. A community build inherits
+the handset's maker, so that phone was shown MIUI's Autostart instructions for a menu it does
+not have --- telling somebody their transfer will stop unless they change a setting they
+cannot find. It now asks whether the manufacturer's own power manager is installed, which is
+the application those steps walk through, and the packages it looks for are declared in the
+manifest's `queries` block. `R-ALIVE-002`.
+
+§3.3 names four things: the foreground service, a partial wake lock, a Wi-Fi lock, and a
+persistent notification with live progress. Only the first and a fixed notification line
+existed. A foreground service is a promise not to kill the process, not a promise to keep the
+processor awake or the radio at full throughput, and the transfer that finished above finished
+without either lock --- on that phone, on that network, that evening. Both locks are held for
+the life of the service now, and the notification follows the session. `R-ALIVE-001`.
+
+### While you are here
+
+- **The device suite uninstalls the application.** `:app:connectedDebugAndroidTest` removes
+  both APKs when it finishes, which takes the keystore key and the pairing with it: the
+  nightly tier leaves a paired phone unpaired, and somebody has to compare six digits again
+  before the next session. A build type with its own `applicationIdSuffix` would let the
+  instrumented tests run beside a real install rather than over it.
+- **`R-ALIVE-003` is deferred**, because nothing in the suite can put a phone to sleep. The
+  measurement above is what stands behind it.
