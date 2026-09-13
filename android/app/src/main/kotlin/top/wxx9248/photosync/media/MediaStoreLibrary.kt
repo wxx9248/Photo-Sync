@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.Log
 import java.security.MessageDigest
 import top.wxx9248.photosync.session.Catalog
 import top.wxx9248.photosync.session.CatalogEntry
@@ -90,17 +91,18 @@ internal class MediaStoreLibrary(private val resolver: ContentResolver) : Librar
     }
 
     /**
-     * Removes one photograph.
+     * Where these photographs live, for a request that asks the system to remove them.
      *
-     * A direct delete only succeeds where the application owns the item or holds
-     * `MANAGE_MEDIA`; everything else goes through the system's own request, which is what
-     * [deleteRequest] builds. Either way §8's gates have already been passed before this is
-     * reached: nothing here decides whether a photograph may go.
+     * A direct `delete` is refused for anything this application did not create --- which is
+     * every photograph a camera took --- however the permissions are set. `MANAGE_MEDIA` does
+     * not change that: it only decides whether the system shows a person a dialog before
+     * carrying the request out. §8 names `createDeleteRequest` for exactly this reason.
      */
-    override fun delete(path: DevicePath): Boolean {
-        val uri = find(path)?.first ?: return false
-        return runCatching { resolver.delete(uri, null, null) > 0 }.getOrDefault(false)
-    }
+    fun uris(paths: List<DevicePath>): List<Uri> = paths.mapNotNull { find(it)?.first }
+
+    /** Of these photographs, the ones the media store no longer has. */
+    fun gone(paths: List<DevicePath>): Set<DevicePath> =
+        paths.filter { find(it) == null }.toSet()
 
     /** The identifier and current facts of one path, or null if it is not there any more. */
     fun find(path: DevicePath): Pair<Uri, CatalogEntry>? {
@@ -134,6 +136,8 @@ internal class MediaStoreLibrary(private val resolver: ContentResolver) : Librar
     )
 
     private companion object {
+        const val TAG = "PhotoSyncLibrary"
+
         const val BaseId = MediaStore.MediaColumns._ID
 
         val COLUMNS = arrayOf(

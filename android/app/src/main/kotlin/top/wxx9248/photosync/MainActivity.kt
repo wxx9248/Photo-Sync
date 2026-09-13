@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
@@ -16,11 +17,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.channels.Channel
+import top.wxx9248.photosync.media.Deletions
+import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.media.Permissions
 import top.wxx9248.photosync.net.FirstMeeting
 import top.wxx9248.photosync.net.Identity
 import top.wxx9248.photosync.net.Meeting
 import top.wxx9248.photosync.pairing.FilePairingStorage
+import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.Outcome
 import top.wxx9248.photosync.session.Pairing
 import top.wxx9248.photosync.ui.DoneScreen
@@ -29,6 +34,7 @@ import top.wxx9248.photosync.ui.FreeUpScreen
 import top.wxx9248.photosync.ui.FreeUpState
 import top.wxx9248.photosync.ui.PairingScreen
 import top.wxx9248.photosync.ui.PairingState
+import top.wxx9248.photosync.ui.ManageMediaScreen
 import top.wxx9248.photosync.ui.PermissionScreen
 import top.wxx9248.photosync.ui.PermissionState
 import top.wxx9248.photosync.ui.StartScreen
@@ -73,6 +79,22 @@ class MainActivity : ComponentActivity() {
             PermissionScreen(PermissionState(refused)) {
                 asking.launch(Permissions.missing(this).toTypedArray())
             }
+            return
+        }
+
+        // Step two: special access, offered once. Skipping it is a decision a person is
+        // allowed to make, so it is remembered for this run rather than asked again on every
+        // recomposition.
+        var askedToManage by remember { mutableStateOf(Permissions.canManageMedia(this)) }
+        val managing = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { askedToManage = true }
+
+        if (!askedToManage) {
+            ManageMediaScreen(
+                onAllow = { managing.launch(Permissions.manageMediaRequest(this)) },
+                onSkip = { askedToManage = true },
+            )
             return
         }
 
@@ -144,8 +166,40 @@ class MainActivity : ComponentActivity() {
                 onConfirm = Transfers::freeUp,
                 onSkip = Transfers::keepThem,
             )
+            is Transfers.Stage.Removing -> Removing(here.paths)
             is Transfers.Stage.Finished -> Done(here.outcome)
         }
+    }
+
+    /**
+     * Asks the platform to remove what §8's gates cleared.
+     *
+     * This is an activity's job and nothing else's: a phone cannot delete a photograph it did
+     * not take without a request the system puts to a person. With media management granted
+     * they see nothing and it happens; without it they confirm, which §8 calls the fallback.
+     *
+     * What went is read back from the media store rather than assumed from the result code,
+     * because a person may have let some through and not others.
+     */
+    @Composable
+    private fun Removing(paths: List<DevicePath>) {
+        val answered = remember { Channel<Unit>(Channel.UNLIMITED) }
+        val asking = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { answered.trySend(Unit) }
+
+        LaunchedEffect(paths) {
+            val library = MediaStoreLibrary(contentResolver)
+            // Batched, because a binder transaction has a size limit a few thousand
+            // identifiers would exceed. §8.
+            for (request in Deletions.requests(contentResolver, library.uris(paths))) {
+                asking.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                answered.receive()
+            }
+            Transfers.removed(library.gone(paths))
+        }
+
+        WaitingScreen(R.string.transfer_working)
     }
 
     @Composable

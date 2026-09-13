@@ -76,7 +76,7 @@ class SessionTest {
         playUntilAsked(session, desktop)
 
         session.keepThem()
-        val outcome = play(session, desktop)
+        val outcome = play(session, desktop, library)
 
         val finished = assertIs<Outcome.Finished>(outcome)
         assertEquals(0, finished.deleted)
@@ -92,6 +92,29 @@ class SessionTest {
         )
     }
 
+    // No `@Covers`: R-DELETE-009 is about the mechanism --- `createDeleteRequest`, silent when
+    // media management is granted --- and that is the platform's behaviour rather than this
+    // module's. What is checked here is what the session does with the answer.
+    @Test
+    fun `a photograph the platform would not remove is reported as failed`() {
+        val library = oneLibrary()
+        val desktop = FakeDesktop(library)
+        val session = phone(library)
+        playUntilAsked(session, desktop)
+
+        session.freeUp()
+        val cleared = assertNotNull(session.freeing, "§8's gates cleared nothing to remove")
+        assertEquals(listOf(DevicePath("DCIM/Camera/IMG_0001.jpg")), cleared)
+
+        // The person agreed and the gates agreed; the platform refused. That is a failure
+        // rather than a photograph somebody chose to keep, and the desktop is told which.
+        session.freed(emptySet())
+        play(session, desktop, library)
+
+        assertEquals(listOf(DeletionResult.FAILED), reported(desktop).map { it.result })
+        assertTrue(library.contains("DCIM/Camera/IMG_0001.jpg"))
+    }
+
     @Test
     @Covers("R-DELETE-005")
     fun `saying yes is permission to check rather than permission to delete`() {
@@ -104,7 +127,7 @@ class SessionTest {
         library.put("DCIM/Camera/IMG_0001.jpg", MTIME + 1, "something else entirely".toByteArray())
 
         session.freeUp()
-        val outcome = play(session, desktop)
+        val outcome = play(session, desktop, library)
 
         assertEquals(0, assertIs<Outcome.Finished>(outcome).deleted)
         assertEquals(
@@ -118,7 +141,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library)
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         val finished = assertIs<Outcome.Finished>(outcome)
         assertEquals(1, finished.sent)
@@ -133,7 +156,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library, imported = setOf("DCIM/Camera/IMG_0001.jpg"))
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         assertIs<Outcome.Finished>(outcome)
         // Straight from the diff to the finish signal: no upload, and nothing waiting on a
@@ -148,7 +171,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library, partials = mapOf("DCIM/Camera/IMG_0001.jpg" to 10L))
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         assertIs<Outcome.Finished>(outcome)
         val opened = desktop.heard.filterIsInstance<Outbound.OpenUpload>().single()
@@ -176,7 +199,7 @@ class SessionTest {
         // list at the start, so this one belongs to the next session.
         library.put("DCIM/Camera/IMG_0002.jpg", MTIME + 60, "a later photograph".toByteArray())
 
-        play(session, desktop)
+        play(session, desktop, library)
 
         val offered = desktop.heard.filterIsInstance<Outbound.SubmitCatalog>().single()
         assertEquals(1, offered.catalog.entries.size)
@@ -198,7 +221,7 @@ class SessionTest {
         desktop.answer(saying(session))
         assertEquals(0, library.digests, "the phone hashed something before it was asked to")
 
-        play(session, desktop)
+        play(session, desktop, library.underlying)
         assertEquals(1, library.digests, "a photograph was hashed more than once")
     }
 
@@ -208,7 +231,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library)
 
-        play(phone(library), desktop)
+        play(phone(library), desktop, library)
 
         val said = assertIs<Outbound.Handshake>(desktop.heard.first())
         assertEquals(Session.PROTOCOL_VERSION, said.protocolVersion)
@@ -221,7 +244,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library, commitInProgress = true)
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         assertEquals(Outcome.Refused(RejectReason.COMMIT_IN_PROGRESS), outcome)
         assertTrue(desktop.heard.none { it is Outbound.OpenUpload })
@@ -233,7 +256,7 @@ class SessionTest {
         val library = oneLibrary()
         val desktop = FakeDesktop(library, reject = RejectReason.NO_SPACE)
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         assertEquals(Outcome.Refused(RejectReason.NO_SPACE), outcome)
         assertTrue(library.contains("DCIM/Camera/IMG_0001.jpg"))
@@ -247,7 +270,7 @@ class SessionTest {
             refuse = mapOf("DCIM/Camera/IMG_0001.jpg" to UploadOutcome.WRITE_FAILED),
         )
 
-        val outcome = play(phone(library), desktop)
+        val outcome = play(phone(library), desktop, library)
 
         val finished = assertIs<Outcome.Finished>(outcome)
         assertEquals(0, finished.deleted)

@@ -26,6 +26,12 @@
     <string name="transfer_done">%1$d sent, %2$d freed, %3$d kept.</string>
     <string name="again">Again</string>
 
+    <!-- Step two of §3.1. Skippable, and worth explaining rather than demanding. -->
+    <string name="manage_title">Let Photo Sync tidy up for you</string>
+    <string name="manage_why">Android asks again for every photograph unless you allow this once. Without it, freeing up space means confirming each file by hand.</string>
+    <string name="manage_grant">Allow</string>
+    <string name="manage_skip">Not now</string>
+
     <!-- Tap one of §3.4. The counts are what the diff worked out. -->
     <string name="start_ready">Ready. Tap Start and the computer will work out what it does not have.</string>
     <string name="start">Start</string>

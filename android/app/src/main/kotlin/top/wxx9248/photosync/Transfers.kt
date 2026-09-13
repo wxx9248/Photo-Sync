@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.FreeUp
 import top.wxx9248.photosync.session.Outcome
 
@@ -38,6 +39,14 @@ internal object Transfers {
 
         /** §8's one prompt, waiting on a person. */
         data class Asking(val freeUp: FreeUp) : Stage
+
+        /**
+         * §8's gates cleared these, and the platform has to be asked to remove them.
+         *
+         * A phone cannot delete a photograph it did not take without putting the request to a
+         * person, and only an activity can do that, so the service waits here.
+         */
+        data class Removing(val paths: List<DevicePath>) : Stage
 
         /** The session ended, one way or another. */
         data class Finished(val outcome: Outcome) : Stage
@@ -82,5 +91,22 @@ internal object Transfers {
     /** The person said no. */
     fun keepThem() {
         answering?.complete(false)
+    }
+
+    private var removing: CompletableDeferred<Set<DevicePath>>? = null
+
+    /** Puts the removal in front of whoever can carry it out, and waits. */
+    suspend fun remove(paths: List<DevicePath>): Set<DevicePath> {
+        val carried = CompletableDeferred<Set<DevicePath>>()
+        removing = carried
+        current.value = Stage.Removing(paths)
+        val gone = carried.await()
+        current.value = Stage.Working
+        return gone
+    }
+
+    /** What actually went, as the screen found it afterwards. */
+    fun removed(gone: Set<DevicePath>) {
+        removing?.complete(gone)
     }
 }

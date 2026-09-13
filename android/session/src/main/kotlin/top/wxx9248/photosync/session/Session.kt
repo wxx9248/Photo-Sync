@@ -42,8 +42,9 @@ class Session(
         is Phase.Sending -> sending(here)
         Phase.Finishing -> Outbound.Finish
         is Phase.Deleting -> Outbound.ReportDeletions(here.outcomes)
-        // Nothing to say while a person is being asked. §8 stops here until they answer.
-        is Phase.Asking -> null
+        // Nothing to say while a person is being asked, or while the platform is being asked
+        // to remove what they agreed to. §8 stops at both.
+        is Phase.Asking, is Phase.Freeing -> null
         Phase.Waiting, Phase.Done -> null
     }
 
@@ -69,11 +70,45 @@ class Session(
      *
      * Saying yes is permission to check, not permission to delete: every candidate still has
      * to prove itself against the copy the desktop claims to hold, and anything that cannot is
-     * kept and reported.
+     * kept and reported. What survives is handed to the driver rather than removed here --- on
+     * a phone, removing a photograph is a request the platform puts to a person.
      */
     fun freeUp() {
         val here = phase as? Phase.Asking ?: return
-        phase = Phase.Deleting(carryOut(here.candidates))
+        val verdicts = here.candidates.map { it to decide(it, library) }
+        phase = Phase.Freeing(
+            approved = verdicts.filter { (_, verdict) -> verdict == DeletionResult.DELETED }
+                .map { (candidate, _) -> candidate.path },
+            kept = verdicts.filterNot { (_, verdict) -> verdict == DeletionResult.DELETED }
+                .map { (candidate, verdict) -> DeletionOutcome(candidate.path, verdict) },
+        )
+    }
+
+    /**
+     * The photographs §8's gates have cleared, waiting on whoever can remove them.
+     *
+     * Null when nothing is waiting. An empty list is not the same thing: it means the gates
+     * cleared none of them, and the driver still has to say so before the session can report.
+     */
+    val freeing: List<DevicePath>?
+        get() = (phase as? Phase.Freeing)?.approved
+
+    /**
+     * What actually went.
+     *
+     * Anything cleared and still here is a failure rather than a refusal: the person agreed,
+     * the gates agreed, and the platform did not do it. §8 reports per file, and the
+     * difference matters to somebody reading the summary.
+     */
+    fun freed(gone: Set<DevicePath>) {
+        val here = phase as? Phase.Freeing ?: return
+        val removed = here.approved.map { path ->
+            DeletionOutcome(
+                path,
+                if (gone.contains(path)) DeletionResult.DELETED else DeletionResult.FAILED,
+            )
+        }
+        phase = Phase.Deleting(removed + here.kept)
     }
 
     /**
@@ -168,22 +203,6 @@ class Session(
 
     private fun openNext(): Phase = Phase.Sending(opened = false)
 
-    /** Runs §8's own checks and then does what they allow, one photograph at a time. */
-    private fun carryOut(candidates: List<DeletionCandidate>): List<DeletionOutcome> =
-        candidates.map { candidate ->
-            val verdict = decide(candidate, library)
-            val result = if (verdict == DeletionResult.DELETED) {
-                if (library.delete(candidate.path)) {
-                    DeletionResult.DELETED
-                } else {
-                    DeletionResult.FAILED
-                }
-            } else {
-                verdict
-            }
-            DeletionOutcome(candidate.path, result)
-        }
-
     private sealed interface Phase {
         data object Handshaking : Phase
         data object Cataloguing : Phase
@@ -191,6 +210,10 @@ class Session(
         data class Sending(val opened: Boolean) : Phase
         data object Waiting : Phase
         data class Asking(val candidates: List<DeletionCandidate>) : Phase
+        data class Freeing(
+            val approved: List<DevicePath>,
+            val kept: List<DeletionOutcome>,
+        ) : Phase
         data object Finishing : Phase
         data class Deleting(val outcomes: List<DeletionOutcome>) : Phase
         data object Done : Phase

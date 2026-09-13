@@ -2,7 +2,11 @@ package top.wxx9248.photosync.media
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.MediaStore
+import android.provider.Settings
 import android.os.Build
 import androidx.core.content.ContextCompat
 
@@ -37,6 +41,28 @@ internal object Permissions {
 
     private fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Whether photographs can be removed without the system asking again each time.
+     *
+     * Step two of §3.1, and skippable: §8 falls back to the system's own confirmation. What it
+     * is not is optional to *ask* for --- without it every delete of a photograph this
+     * application did not take is refused, which is the whole of what a person pressed the
+     * button for.
+     */
+    fun canManageMedia(context: Context): Boolean = MediaStore.canManageMedia(context)
+
+    /**
+     * The settings screen that grants it.
+     *
+     * Special access is never granted by a dialog: the platform insists a person goes and
+     * turns it on, so this is the only thing an application can do about it.
+     */
+    fun manageMediaRequest(context: Context): Intent =
+        Intent(
+            Settings.ACTION_REQUEST_MANAGE_MEDIA,
+            Uri.fromParts("package", context.packageName, null),
+        )
 
     /**
      * Whether the camera roll can be read.

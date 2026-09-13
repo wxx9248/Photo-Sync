@@ -36,7 +36,9 @@ class FakeLibrary(initial: Map<String, Pair<Long, ByteArray>> = emptyMap()) : Li
     override fun digest(path: DevicePath): Sha256 =
         digestOf(files[path]?.second ?: ByteArray(0))
 
-    override fun delete(path: DevicePath): Boolean = files.remove(path) != null
+    /** What a driver does after the session says a photograph may go. */
+    fun remove(paths: List<DevicePath>): Set<DevicePath> =
+        paths.filter { files.remove(it) != null }.toSet()
 }
 
 fun digestOf(bytes: ByteArray): Sha256 =

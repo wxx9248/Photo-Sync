@@ -133,13 +133,20 @@ class FakeDesktop(
 }
 
 /** Runs a whole session between the two, and hands back how it ended. */
-fun play(session: Session, desktop: FakeDesktop): Outcome? {
+fun play(session: Session, desktop: FakeDesktop, library: FakeLibrary): Outcome? {
     var guard = 0
     while (session.outcome == null) {
         // §8 stops and asks before anything is deleted. These tests are about a person who
         // says yes; the one about saying no drives the session by hand.
         if (session.asking != null) {
             session.freeUp()
+            continue
+        }
+        // What a phone does with the list §8 cleared: remove those photographs, and say which
+        // actually went.
+        val freeing = session.freeing
+        if (freeing != null) {
+            session.freed(library.remove(freeing))
             continue
         }
         val said = session.next() ?: break

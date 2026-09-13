@@ -57,6 +57,35 @@ internal fun PermissionScreen(state: PermissionState, onGrant: () -> Unit) {
 }
 
 /**
+ * Step two of §3.1: special access, which only a person can turn on.
+ *
+ * Offered once and skippable, because §8 has a fallback and a household that would rather
+ * confirm each file is entitled to. Skippable is not the same as unasked: without it every
+ * delete of a photograph this application did not take is refused, which is the whole of what
+ * somebody pressed the button for.
+ */
+@Composable
+internal fun ManageMediaScreen(onAllow: () -> Unit, onSkip: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.manage_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.manage_why),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onAllow) { Text(stringResource(R.string.manage_grant)) }
+            OutlinedButton(onClick = onSkip) { Text(stringResource(R.string.manage_skip)) }
+        }
+    }
+}
+
+/**
  * Step five of §3.1: the six digits, on the phone's side of the comparison.
  *
  * [code] is null until the handshake has happened, and [refused] means the person at the

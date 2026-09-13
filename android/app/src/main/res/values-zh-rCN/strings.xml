@@ -20,6 +20,11 @@
     <string name="transfer_done">已发送 %1$d 张，释放 %2$d 张，保留 %3$d 张。</string>
     <string name="again">再来一次</string>
 
+    <string name="manage_title">让照片同步帮你清理</string>
+    <string name="manage_why">如果不允许这一项，安卓会为每一张照片重复询问。那样释放空间就得逐个文件手动确认。</string>
+    <string name="manage_grant">允许</string>
+    <string name="manage_skip">暂不</string>
+
     <string name="start_ready">准备就绪。点击"开始"，电脑会算出还缺哪些照片。</string>
     <string name="start">开始</string>
 
