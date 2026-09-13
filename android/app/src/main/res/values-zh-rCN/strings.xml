@@ -25,6 +25,21 @@
     <string name="manage_grant">允许</string>
     <string name="manage_skip">暂不</string>
 
+    <string name="battery_title">让它在息屏时也能传完</string>
+    <string name="battery_why">安卓会暂停后台应用。不允许这一项，长时间的传输会在你放下手机时中断。</string>
+    <string name="battery_grant">允许</string>
+
+    <string name="keepalive_title">这台手机还差一步</string>
+    <string name="keepalive_intro">%1$s 手机对后台应用的限制比安卓本身更严。下面这些设置最容易被忽略：</string>
+    <string name="keepalive_open">打开设置</string>
+    <string name="keepalive_done">完成</string>
+
+    <string name="keepalive_xiaomi">应用设置 → 照片同步 → 打开"自启动"。省电策略 → 无限制。在最近任务里下拉卡片并锁定。</string>
+    <string name="keepalive_oppo">电池 → 允许后台运行。应用管理 → 照片同步 → 打开"自启动"。在最近任务里锁定。</string>
+    <string name="keepalive_oneplus">电池 → 电池优化 → 照片同步 → 不优化。高级优化 → 关闭深度优化。</string>
+    <string name="keepalive_vivo">电池 → 后台高耗电 → 允许照片同步。i管家 → 应用管理 → 自启动。</string>
+    <string name="keepalive_samsung">电池 → 后台使用限制 → 永不休眠的应用 → 添加照片同步。</string>
+
     <string name="start_ready">准备就绪。点击"开始"，电脑会算出还缺哪些照片。</string>
     <string name="start">开始</string>
 

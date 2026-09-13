@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import top.wxx9248.photosync.media.Deletions
+import top.wxx9248.photosync.media.KeepAlive
 import top.wxx9248.photosync.media.MediaStoreLibrary
 import top.wxx9248.photosync.media.Permissions
 import top.wxx9248.photosync.net.FirstMeeting
@@ -36,6 +37,8 @@ import top.wxx9248.photosync.ui.FreeUpScreen
 import top.wxx9248.photosync.ui.FreeUpState
 import top.wxx9248.photosync.ui.PairingScreen
 import top.wxx9248.photosync.ui.PairingState
+import top.wxx9248.photosync.ui.BatteryScreen
+import top.wxx9248.photosync.ui.KeepAliveScreen
 import top.wxx9248.photosync.ui.ManageMediaScreen
 import top.wxx9248.photosync.ui.PermissionScreen
 import top.wxx9248.photosync.ui.PermissionState
@@ -64,6 +67,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * What a person has already been told, so they are not told it again.
+     *
+     * §3.5 keeps the pairing credential and nothing about a transfer. This is neither: it is
+     * what the application has said to the person holding it, and forgetting that would mean
+     * showing the same page of manufacturer settings on every launch.
+     */
+    private val onboarding by lazy { Onboarding(this) }
+
     /** §3.1 in order: nothing further is offered until the step before it is done. */
     @Composable
     private fun Onboarding() {
@@ -87,15 +99,71 @@ class MainActivity : ComponentActivity() {
         // Step two: special access, offered once. Skipping it is a decision a person is
         // allowed to make, so it is remembered for this run rather than asked again on every
         // recomposition.
-        var askedToManage by remember { mutableStateOf(Permissions.canManageMedia(this)) }
+        var askedToManage by remember {
+            mutableStateOf(
+                Permissions.canManageMedia(this) ||
+                    onboarding.asked(Onboarding.Step.MEDIA_MANAGEMENT)
+            )
+        }
         val managing = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { askedToManage = true }
+        ) {
+            onboarding.remember(Onboarding.Step.MEDIA_MANAGEMENT)
+            askedToManage = true
+        }
 
         if (!askedToManage) {
             ManageMediaScreen(
                 onAllow = { managing.launch(Permissions.manageMediaRequest(this)) },
-                onSkip = { askedToManage = true },
+                onSkip = {
+                    onboarding.remember(Onboarding.Step.MEDIA_MANAGEMENT)
+                    askedToManage = true
+                },
+            )
+            return
+        }
+
+        // Step three: the exemption Android itself offers, which is the only part of §3.3 an
+        // application can ask for.
+        var askedToStayAwake by remember {
+            mutableStateOf(
+                KeepAlive.exempt(this) || onboarding.asked(Onboarding.Step.BATTERY_EXEMPTION)
+            )
+        }
+        val exempting = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) {
+            onboarding.remember(Onboarding.Step.BATTERY_EXEMPTION)
+            askedToStayAwake = true
+        }
+
+        if (!askedToStayAwake) {
+            BatteryScreen(
+                onAllow = { exempting.launch(KeepAlive.exemptionRequest(this)) },
+                onSkip = {
+                    onboarding.remember(Onboarding.Step.BATTERY_EXEMPTION)
+                    askedToStayAwake = true
+                },
+            )
+            return
+        }
+
+        // Step four: the settings only this phone's manufacturer knows about. Nothing can be
+        // granted here, so it is shown once and remembered --- a person who has read it should
+        // not be shown it again every time they open the application.
+        val steps = remember { KeepAlive.brandSteps() }
+        var readTheSteps by remember {
+            mutableStateOf(onboarding.asked(Onboarding.Step.BRAND_STEPS))
+        }
+        if (steps != null && !readTheSteps) {
+            KeepAliveScreen(
+                brand = android.os.Build.MANUFACTURER,
+                steps = steps,
+                onOpen = { startActivity(KeepAlive.settings(this)) },
+                onDone = {
+                    onboarding.remember(Onboarding.Step.BRAND_STEPS)
+                    readTheSteps = true
+                },
             )
             return
         }

@@ -32,6 +32,23 @@
     <string name="manage_grant">Allow</string>
     <string name="manage_skip">Not now</string>
 
+    <!-- Steps three and four of §3.1. The brand steps are the table in docs/INSTALL.md, said
+         to the person whose phone it is. -->
+    <string name="battery_title">Let it finish while the screen is off</string>
+    <string name="battery_why">Android pauses apps in the background. Without this, a long transfer stops when you put the phone down.</string>
+    <string name="battery_grant">Allow</string>
+
+    <string name="keepalive_title">One more, for this phone</string>
+    <string name="keepalive_intro">%1$s phones stop background apps harder than Android asks them to. These settings are the ones that catch people out:</string>
+    <string name="keepalive_open">Open settings</string>
+    <string name="keepalive_done">Done</string>
+
+    <string name="keepalive_xiaomi">Apps → Photo Sync → turn Autostart on. Battery saver → No restrictions. In Recents, pull the card down and lock it.</string>
+    <string name="keepalive_oppo">Battery → Allow background running. App management → Photo Sync → Auto-launch on. Lock it in Recents.</string>
+    <string name="keepalive_oneplus">Battery → Battery optimisation → Photo Sync → Don\'t optimise. Advanced optimisation → Deep optimisation off.</string>
+    <string name="keepalive_vivo">Battery → High background power consumption → allow Photo Sync. iManager → App manager → Autostart.</string>
+    <string name="keepalive_samsung">Battery → Background usage limits → Never sleeping apps → add Photo Sync.</string>
+
     <!-- Tap one of §3.4. The counts are what the diff worked out. -->
     <string name="start_ready">Ready. Tap Start and the computer will work out what it does not have.</string>
     <string name="start">Start</string>

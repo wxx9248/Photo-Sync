@@ -85,6 +85,56 @@ internal fun ManageMediaScreen(onAllow: () -> Unit, onSkip: () -> Unit) {
     }
 }
 
+/** Step three of §3.1: the exemption Android itself offers. */
+@Composable
+internal fun BatteryScreen(onAllow: () -> Unit, onSkip: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.battery_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.battery_why),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onAllow) { Text(stringResource(R.string.battery_grant)) }
+            OutlinedButton(onClick = onSkip) { Text(stringResource(R.string.manage_skip)) }
+        }
+    }
+}
+
+/**
+ * Step four of §3.1: the settings only this phone's manufacturer knows about.
+ *
+ * Nothing here can be granted by an application. All it can do is say where the settings are,
+ * in this phone's own words, and open the page they live behind.
+ */
+@Composable
+internal fun KeepAliveScreen(brand: String, steps: Int, onOpen: () -> Unit, onDone: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.keepalive_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = stringResource(R.string.keepalive_intro, brand),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(text = stringResource(steps), style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onOpen) { Text(stringResource(R.string.keepalive_open)) }
+            OutlinedButton(onClick = onDone) { Text(stringResource(R.string.keepalive_done)) }
+        }
+    }
+}
+
 /**
  * Step five of §3.1: the six digits, on the phone's side of the comparison.
  *
