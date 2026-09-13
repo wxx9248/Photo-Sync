@@ -98,6 +98,7 @@ internal class GrpcPairing private constructor(
             asked.await()
         } catch (failure: Exception) {
             coroutineContext.ensureActive()
+            Log.w(TAG, "the desktop did not finish pairing", failure)
             null
         }
     }

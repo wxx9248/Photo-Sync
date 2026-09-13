@@ -71,7 +71,16 @@ internal class Identity private constructor(
                     ALIAS,
                     KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
                 )
-                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    // TLS asks the key to sign a transcript it has already hashed, which the
+                    // keystore calls `DIGEST_NONE`. Without it every client handshake fails
+                    // at the signature with `INCOMPATIBLE_DIGEST`, and the phone is told only
+                    // that the connection went away.
+                    .setDigests(
+                        KeyProperties.DIGEST_NONE,
+                        KeyProperties.DIGEST_SHA256,
+                        KeyProperties.DIGEST_SHA384,
+                        KeyProperties.DIGEST_SHA512,
+                    )
                     .setCertificateSubject(X500Principal("CN=photo-sync"))
                     .setCertificateSerialNumber(BigInteger.ONE)
                     // Dates nothing checks, because §5.2 pins the key rather than trusting a

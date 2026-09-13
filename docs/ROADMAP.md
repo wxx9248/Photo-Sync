@@ -15,9 +15,12 @@ something to enforce from the first milestone without demanding the whole spec a
 
 ## Milestones
 
-Every milestone is complete. What remains is not code: `docs/HANDOFF.md` §0 is the list of
-things that need a machine, a phone, or a person's eyes, and M9's own exit — both halves
-installed and one real session end to end — is the last of them.
+M0 to M9 are complete, and M9's exit was met on 12 September 2026: a photograph crossed from
+a Xiaomi MI 8 to this desktop, byte-for-byte, and the phone stopped to ask before deleting it.
+
+Running it is what produced M10. Everything in that milestone is something the harness reports
+as working and a family would find broken, which is the difference between a system that is
+verified and a product that functions.
 
 M2 closed with the SQLite virtual file system outstanding: the crate `STACK.md` §6 chose does
 not support the journal mode §3.5 requires. `docs/HANDOFF.md` records what was tried and the
@@ -168,6 +171,41 @@ Work: PKGBUILD, the F-Droid repository, install and pairing instructions, and th
 matrix for the target phones.
 
 Exit: both halves install on a clean machine and phone, and one real session runs end to end.
+
+### M10 The things that stop a family using it
+
+Goal: the application does what `SPEC.md` says when a person holds it, not only what the suite
+can observe. Found by running the two halves against each other for the first time; ordered by
+what breaks worst.
+
+1. **Deletion cannot delete.** `MediaStoreLibrary.delete` calls `resolver.delete` and nothing
+   else, which throws for any photograph the application did not create --- which is every
+   photograph a camera took. `MANAGE_MEDIA` is declared in the manifest and never requested,
+   and `Deletions.requests`, which batches §8's `createDeleteRequest` fallback, is called by
+   nothing. "Free up 18.2 GB" therefore frees nothing and reports every file as failed.
+   Closes `R-DELETE-009`.
+
+2. **The keep-alive stack does not exist.** §3.1 steps 2 to 4 --- media management, the
+   battery-optimisation exemption, the per-brand autostart steps. The exemption is declared
+   and never requested. §3.3 says an ordinary background process on the target phones is
+   killed within minutes, so a long transfer with the screen off does not finish.
+
+3. **The phone gives up on the first address.** `hostAddresses.firstOrNull()` with no
+   fallback, so a desktop advertising both stacks is a coin toss per session.
+
+4. **A desktop restart strands the phone.** The desktop takes a random port every start and sends
+   no mDNS goodbye when it dies, so the phone dials a dead port from its cache until that
+   expires.
+
+5. **Nothing reconnects.** `Sync.run` runs its loop once. §6 is written around reconnection
+   being the ordinary recovery path and the phone never takes it.
+
+6. **Smaller, and real.** `Outcome.Refused` renders as "the computer did not answer"; there is
+   no per-file progress, only "Working…"; one file crosses at a time where §6.4 allows
+   several.
+
+Exit: a phone that has never been paired can be set up, fill a vault, free its own space, and
+survive the screen going off --- on one of the brands `SPEC.md` §3.1 names.
 
 ## Environment
 

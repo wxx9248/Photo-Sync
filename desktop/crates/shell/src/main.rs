@@ -135,16 +135,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     wire(&window, &configuration, &settings, &desk, &runtime);
 
     // §5.2 asks a person whether two screens match, and this is where their answer lands.
+    // Only the answer. Closing the window here would wipe the answer before the call waiting
+    // on it had read it, and the phone would be told no however the button was pressed; the
+    // pairing service closes it once it has what it asked for.
     let agreeing = pairing.clone();
-    window.on_pair_confirmed(move || {
-        agreeing.confirm();
-        agreeing.close();
-    });
+    window.on_pair_confirmed(move || agreeing.confirm());
     let refusing = pairing.clone();
-    window.on_pair_rejected(move || {
-        refusing.reject();
-        refusing.close();
-    });
+    window.on_pair_rejected(move || refusing.reject());
 
     // What the desktop has been doing, brought over to the window at a human pace rather
     // than on every event: a transfer produces thousands of them a second.

@@ -125,8 +125,15 @@ pub async fn listen(
             // Each handshake gets its own task, so one phone that connects and says nothing
             // cannot hold up the phone behind it.
             tokio::spawn(async move {
-                let Ok(stream) = acceptor.accept(socket).await else {
-                    return;
+                let stream = match acceptor.accept(socket).await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        // A handshake that fails here is a phone that cannot get in and is
+                        // told only that the connection went away. Rule 3.2: an error nobody
+                        // is going to act on is still an error somebody has to read.
+                        tracing::warn!("a phone could not complete the handshake: {error}");
+                        return;
+                    }
                 };
                 let key = PeerKey(peer_key(&stream));
                 let _ = connections

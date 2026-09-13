@@ -206,10 +206,16 @@ pub fn server_config(
         provider: Arc::clone(&provider),
     });
 
-    ServerConfig::builder_with_provider(provider)
+    let mut config = ServerConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()?
         .with_client_cert_verifier(verifier)
-        .with_single_cert(vec![certificate(identity)], private_key(identity))
+        .with_single_cert(vec![certificate(identity)], private_key(identity))?;
+
+    // gRPC runs on HTTP/2 and a phone's client will not guess: it offers `h2` over ALPN and
+    // walks away from a server that selects nothing. A Rust client is more forgiving, which
+    // is why every test here passed against a desktop no phone could connect to.
+    config.alpn_protocols = vec![b"h2".to_vec()];
+    Ok(config)
 }
 
 /// Verifies a desktop by its pinned key. The phone half of `SPEC.md` §5.2, used by the test
