@@ -567,7 +567,7 @@ mod tests {
 
         let replayed = replay(&device(), &plan, &batch, &missing, imported_at().at);
 
-        // A file at a name the sealed map reserved is this desktop's own completed rename.
+        // The staged file is gone, which §7.4 reads as a rename that already happened.
         assert!(replayed.entries.is_empty());
         assert_eq!(replayed.device_files.len(), 1);
     }

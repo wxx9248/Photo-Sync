@@ -52,8 +52,6 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 ### Decide
 
-- [ ] **§7.4's parenthetical.** It justifies recovery by an inference the desktop does not
-      make, and is safer for not making it. Reword the specification, or leave it. (§9)
 - [ ] **The F-Droid signing keystore.** Make it, and back it up off the machine, before the
       first release. Losing it re-identifies every phone in the house. `packaging/fdroid/`
       says why at length. (§14)
@@ -74,6 +72,12 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 - **The JDK.** You chose 25; `DEVELOPMENT.md` says so, both halves target it, and the setup
   command it documents now works. Kotlin is 2.4.20 and Gradle 9.7.1, both current, with the
   wrapper checked in.
+- **§7.4's parenthetical.** Decided: reworded, because it justified recovery by an inference
+  the desktop does not make. Recovery decides from the staged file and never looks at the
+  target, so the specification now says that, and says which half of the single-writer
+  assumption is load-bearing: something else *creating* a file at a reserved name costs that
+  file and never the photograph, while something else *removing* a staged file reads exactly
+  like a rename that had completed. `R-RECOVER-003`'s quote moved with it. (§9)
 - **A vault with more than one writer.** Decided: the current behaviour is right. Staging is
   per device, so two phones cannot collide while sending; §7.2 gives every vault copy a free
   name, so a commit cannot overwrite one either. A photograph arriving again at a path the same

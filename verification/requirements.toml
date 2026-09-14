@@ -357,7 +357,7 @@ id = "R-RECOVER-003"
 section = "§7.4"
 area = "RECOVER"
 status = "active"
-quote = "a file already present at a target path is our own completed rename"
+quote = "an entry whose staged file is gone has already been renamed"
 
 [[requirement]]
 id = "R-RECOVER-004"

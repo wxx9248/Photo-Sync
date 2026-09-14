@@ -913,12 +913,10 @@ fn a_photograph_is_not_given_up_for_whatever_sits_at_its_name() {
         .put_in_vault(&reserved, b"not the photograph".to_vec());
     sim.restart();
 
-    // §7.4 reasons that a file already at a target must be this desktop's own completed
-    // rename, and says that reading is sound only under the single-writer assumption. The
-    // desktop never makes that inference: it decides from the staged file, which is still
-    // there when the rename has not happened, so the photograph is written and it is the
-    // intruder that goes. Recovery is idempotent here for a reason that does not need the
-    // assumption at all.
+    // §7.4 decides from the staged file, which is still here because the rename never
+    // happened, so the photograph is written and it is the intruder that goes. This is the
+    // benign half of the single-writer assumption: something else *creating* a file at a
+    // reserved name costs that file, never the photograph.
     assert_eq!(
         sim.storage.vault().get(&reserved),
         Some(&PHOTO.to_vec()),

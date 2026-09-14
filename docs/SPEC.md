@@ -265,14 +265,19 @@ because each commit inserts its index rows *before* releasing the global commit 
 * Absent or unsealed write-log → discard it; staging is not mid-commit. Stale manifest rows,
   if any, resolve at the next commit (step 1 drops rows without files; step 3's clear order
   guarantees index rows became durable before the log was removed).
-* Sealed write-log → re-execute entries lacking done-marks. The sealed map reserved each
-  target name, so a file already present at a target path is our own completed rename;
-  re-executing a **duplicate** entry just deletes the staged file if still present.
+* Sealed write-log → re-execute entries lacking done-marks. **What decides is the staged
+  file, not the target:** an entry whose staged file is gone has already been renamed, and one
+  whose staged file is still there has not — so it is renamed again, over whatever sits at the
+  name the sealed map reserved for it. Re-executing a **duplicate** entry just deletes the
+  staged file if still present.
 * Replay index insertion (idempotent upsert — the manifest supplies the row data, which is
   why the clear order deletes it *after* the write-log), then clear staging as in step 3.
-* Recovery assumes the vault has a **single writer**: nothing else creates files there
-  between crash and recovery. ("Already present at the target ⇒ our own rename" is sound
-  only under that assumption.)
+* Recovery assumes the vault has a **single writer**: nothing else creates or removes files
+  there between crash and recovery. The two halves are not equally dangerous. *Creation* is
+  benign here, because the staged copy is what decides: a photograph is never given up for a
+  stranger's file sitting at its name, and it is the stranger that goes. *Removal* is what the
+  assumption is really for — a staged file deleted by something else reads exactly like a
+  rename that had already completed, and the photograph would be dropped from the batch.
 
 ### 7.5 Import index
 
