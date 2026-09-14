@@ -47,6 +47,17 @@ internal object Transfers {
         data class Asking(val freeUp: FreeUp) : Stage
 
         /**
+         * A person said yes and §8's gates are re-proving every photograph before anything
+         * goes.
+         *
+         * This is the longest part of freeing space up --- each candidate is read back and
+         * hashed --- and it used to render as "Working…", the same words a transfer uses.
+         * Somebody who had just tapped a button watched a sentence that did not change for
+         * two minutes and could not tell whether their phone was doing anything.
+         */
+        data class Checking(val photographs: Int) : Stage
+
+        /**
          * §8's gates cleared these, and the platform has to be asked to remove them.
          *
          * A phone cannot delete a photograph it did not take without putting the request to a
@@ -92,7 +103,12 @@ internal object Transfers {
         answering = answer
         current.value = Stage.Asking(freeUp)
         val said = answer.await()
-        current.value = Stage.Working()
+        // Saying yes starts the gates, which is a phase of its own and not a transfer.
+        current.value = if (said) {
+            Stage.Checking(freeUp.fromThisTransfer + freeUp.fromEarlier)
+        } else {
+            Stage.Working()
+        }
         return said
     }
 

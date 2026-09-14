@@ -241,6 +241,27 @@ internal fun WorkingScreen(sent: Int?, total: Int?) {
     }
 }
 
+/**
+ * A line with a number in it, for a phase that takes long enough to be worth naming.
+ *
+ * §8's two phases --- checking every photograph against the computer, then asking the platform
+ * to remove them --- used to render as the same "Working…" a transfer shows. A person who had
+ * just tapped a button saw an unchanging sentence for minutes.
+ */
+@Composable
+internal fun CountedScreen(message: Int, photographs: Int) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(message, photographs),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
 /** One line, for the states that are only waiting. */
 @Composable
 internal fun WaitingScreen(message: Int, onAgain: (() -> Unit)? = null) {

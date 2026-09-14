@@ -66,6 +66,12 @@
     <string name="free_up">Free up space</string>
     <string name="keep_them">Keep them</string>
 
+    <!-- Freeing up space, said as the two things it actually is. §8 checks every photograph
+         against the copy the computer holds before anything goes, and that is the long part. -->
+    <string name="checking">Checking %1$d photos against the computer before anything is removed…</string>
+    <string name="removing">Removing %1$d photos from this phone…</string>
+
     <string name="notification_channel">Transfers</string>
     <string name="notification_working">Moving photographs to the computer</string>
+    <string name="notification_asking">Waiting for you to answer</string>
 </resources>

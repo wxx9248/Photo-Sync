@@ -32,6 +32,7 @@ import top.wxx9248.photosync.session.DevicePath
 import top.wxx9248.photosync.session.Outcome
 import top.wxx9248.photosync.session.Pairing
 import top.wxx9248.photosync.session.RejectReason
+import top.wxx9248.photosync.ui.CountedScreen
 import top.wxx9248.photosync.ui.DoneScreen
 import top.wxx9248.photosync.ui.DoneState
 import top.wxx9248.photosync.ui.FreeUpScreen
@@ -239,6 +240,7 @@ class MainActivity : ComponentActivity() {
                 onConfirm = Transfers::freeUp,
                 onSkip = Transfers::keepThem,
             )
+            is Transfers.Stage.Checking -> CountedScreen(R.string.checking, here.photographs)
             is Transfers.Stage.Removing -> Removing(here.paths)
             is Transfers.Stage.Finished -> Done(here.outcome)
         }
@@ -283,7 +285,7 @@ class MainActivity : ComponentActivity() {
             Transfers.removed(withContext(Dispatchers.IO) { library.gone(paths) }, declined)
         }
 
-        WaitingScreen(R.string.transfer_working)
+        CountedScreen(R.string.removing, paths.size)
     }
 
     @Composable

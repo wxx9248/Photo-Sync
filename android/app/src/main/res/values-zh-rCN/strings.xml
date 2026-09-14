@@ -55,5 +55,8 @@
     <string name="keep_them">保留</string>
 
     <string name="notification_channel">传输</string>
+    <string name="checking">正在将 %1$d 张照片与电脑核对，确认无误后才会删除…</string>
+    <string name="removing">正在从这台手机删除 %1$d 张照片…</string>
+    <string name="notification_asking">正在等待你的回答</string>
     <string name="notification_working">正在把照片传到电脑</string>
 </resources>
