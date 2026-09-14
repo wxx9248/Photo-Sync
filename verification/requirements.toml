@@ -462,8 +462,9 @@ quote = "any mismatch → **keep the file**, report"
 id = "R-DELETE-009"
 section = "§8"
 area = "DELETE"
-status = "deferred"
+status = "active"
 quote = "Deletion uses `MediaStore.createDeleteRequest`: **silent** when `MANAGE_MEDIA` is granted"
+note = "Only a device can show this. The photographs the test deletes are made through a shell, because a photograph this application created needs no request at all and is the one case it never meets."
 
 [[requirement]]
 id = "R-DELETE-010"
