@@ -262,7 +262,9 @@ once per stream rather than once per chunk halves that, and barely moves the wal
 because the phone spends the time it saves waiting for the desktop instead. What is left is
 the round trip and the desktop's per-file work: write, fsync, verify, rename.
 
-Exit: met, and the other nine tenths turned out not to be on the phone at all.
+Exit: met. Where the remaining time goes depends entirely on the machines --- on a spinning
+disk it is the desktop's durability points, and on a modern phone with a fast vault there is
+very little of it left to find.
 
 ### Where the time actually goes
 
@@ -287,8 +289,35 @@ directory being made durable when a file is created, and most of the rest are SQ
 runs `synchronous = FULL` because "everything here is a durability claim".
 
 So the ordering is: **disk, then everything else, and nothing else is close.** The MediaStore
-work, the transport, TLS, the phone's processor and the Wi-Fi link are all hidden behind it ---
-the link carries 36.8 MB/s and the transfer uses a tenth of that.
+work, the transport, TLS, the phone's processor and the Wi-Fi link are all hidden behind it.
+
+### A second phone, and a claim withdrawn
+
+Everything above was measured with one phone --- a 2018 Xiaomi MI 8 --- against a vault on a
+5400 rpm disk. An earlier version of this section concluded from it that the transfer uses a
+tenth of the link. That was true of that phone and that vault, and wrong as a statement about
+this software. A vivo on Android 16 says so:
+
+| photograph size | sustained | share of the link |
+|---|---|---|
+| about 400 MB, eight of them | 87 to 116 MB/s | **87%** |
+| **10 to 20 MB, a hundred and fifty** | **about 90 MB/s** | **78%** |
+| about 3 MB, four hundred | about 62 MB/s | 54% |
+
+The link itself carries **115 MB/s**, measured with a plain socket from the same phone, and the
+vault was on tmpfs so the disk could not be the answer. The per-byte path --- reading through
+MediaStore, sha256, TLS, protobuf, the socket --- **sustains ninety megabytes a second on a
+modern phone.** It was never the bottleneck.
+
+What the three rows show is where per-file cost begins to matter. At the size a modern camera
+produces it is nearly invisible. At three megabytes it costs a quarter of the throughput. The
+MI 8's figures were one-megabyte photographs against a spinning disk, which is the worst corner
+of both axes at once.
+
+Two caveats on those numbers. The photographs were zero-filled, so the filesystem underneath
+them may be kinder than real JPEG data would be --- treat 90 MB/s as an upper bound. And the
+generator gave a hundred and fifty of them only eleven distinct lengths, so the commit
+deduplicated them down to eleven; every byte still crossed, which is what was being measured.
 
 ### What that leaves
 

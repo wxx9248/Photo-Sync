@@ -65,7 +65,9 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
       follows it on a phone running that system. The application now decides which row to show
       by looking for the manufacturer's own power manager, so the same phone confirms both the
       steps and the detection --- and a phone carrying a community build of Android should be
-      shown nothing at all. (§14, §17)
+      shown nothing at all. The vivo row is half done: the detection is confirmed on a real
+      OriginOS phone (§19) and the menu names in it are still unread by anybody holding one.
+      (§14, §17, §19)
 
 ### Closed since these were written
 
@@ -714,3 +716,41 @@ it is in: `debuggerd -j <pid>` for the coroutine workers, and whether the deskto
 report arriving. A session that is asked a second time after a rejoin will prompt for deletion
 again, because §3.5 lets the phone remember nothing --- that is a known consequence and not a
 second defect.
+
+## 19. What a second phone said
+
+A vivo V2304A on Android 16, OriginOS, Chinese locale --- one of the systems §3.1 step 4 was
+actually written about, which the MI 8 never was: that phone runs a community build of Android
+and has none of the menus or the killing.
+
+**The brand-step detection is right.** All three packages the code looks for are on the phone
+(`com.iqoo.secure`, `com.vivo.permissionmanager`, `com.vivo.abe`), and onboarding showed the
+vivo row --- not Xiaomi's, not nothing. That exercised the manifest's `queries` block as well,
+without which Android 11 and later would have answered "not installed" for every one of them.
+The wording it showed, for somebody to check against the real menus: 电池 → 后台高耗电 →
+允许照片同步。i管家 → 应用管理 → 自启动。
+
+**A transfer survived the screen going off.** 1500 photographs, 1.4 GB, with the screen dark
+and the battery reported unplugged for about seven of the eight minutes, and with the battery
+exemption granted but **none of the vivo steps applied**. Hold that loosely: seven minutes is
+short for a task-killer that usually bites after longer idleness, `dumpsys battery unplug` only
+makes Android *believe* it is on battery, and a foreground service with a live notification is
+the case these systems are most lenient about. A phone genuinely unplugged in a drawer for an
+hour is still the test nobody has run.
+
+**Deletion is silent here too.** With `MANAGE_MEDIA` granted, 1500 photographs went without a
+dialog --- `R-DELETE-009` on a second vendor.
+
+**The Chinese interface has now been seen in situ**, end to end: onboarding's four steps,
+pairing with the six digits, live progress (正在发送第 156 张，共 1500 张。), the phase wording
+(正在等待你的回答), §8's prompt and its two buttons. Screenshots of every screen exist. What is
+still missing is a native reader's judgement of the wording, which is §0's standing item.
+
+### Two things to know before using this phone again
+
+* **OriginOS gives up nothing to logcat.** Not one line from the application's own tags, where
+  the MI 8 printed discovery traces freely. Everything learned about §18's hang came from those
+  logs. On this phone the visible surface is screenshots, the notification line, and the
+  desktop's side.
+* **It is much faster than the other one.** 115 MB/s on the link where the MI 8 manages 36.8,
+  and the numbers in `docs/ROADMAP.md` M11 come from it.
