@@ -668,3 +668,48 @@ the life of the service now, and the notification follows the session. `R-ALIVE-
   instrumented tests run beside a real install rather than over it.
 - **`R-ALIVE-003` is deferred**, because nothing in the suite can put a phone to sleep. The
   measurement above is what stands behind it.
+
+## 18. A hang I could not reproduce, and what it cost to say so
+
+A phone finished a real first session --- 3420 photographs, sixteen minutes, every one in the
+vault --- deleted all of them, and then said nothing more. Both ends were asleep, four
+connections sat established with nothing queued, and the desktop never saw the report. It was
+not a crash and not a deadlock either end could see: the session simply had no way to learn it
+was alone.
+
+**It has not recurred.** Five experiments, each holding everything else still:
+
+| What was varied | Result |
+|---|---|
+| 3420 photographs, seven batches, vault on tmpfs | completed |
+| 1200 photographs, three batches | completed |
+| Screen slept one second into the read-back | completed 42 s later |
+| A socket held open by the phone, silent, sixteen minutes | the late byte arrived |
+| 3420 photographs of a megabyte, vault on the real disk, seventeen-minute transfer | completed |
+| Fifteen minutes idle at §8's prompt, with `keepAliveWithoutCalls` taken back out | report answered in 76 ms |
+
+So the trigger is unknown, and the two most plausible stories --- the network forgetting an idle
+connection, and scale --- are both ruled out by experiment rather than by argument. What is left
+is something that happened once on a build that has since changed in three ways.
+
+What came out of it is worth more than the diagnosis would have been:
+
+* **No call had a deadline.** Any silence, from any cause, became a session that waited until
+  somebody force-stopped it --- and §6's rejoin, which is the whole of this application's
+  recovery, can only run if something tells the phone the desktop has stopped answering. There
+  is a deadline now, and a test that fails by hanging if it is removed.
+* **Three phases of a session rendered as one sentence.** Sending, checking and removing all
+  said "Working…", so from outside the process the state could not be read at all. That cost
+  half an hour of this investigation, and the first thing the next run showed was the
+  notification saying "Waiting for you to answer" --- the state I had previously had to infer.
+* **The platform was shedding notifications**, logging `Package enqueue rate is 5.01`, because
+  a transfer produces stage changes faster than the system will take them.
+
+### If it happens again
+
+The deadline means it now ends in a refusal that §6 rejoins from rather than a phone that says
+nothing. The one thing worth capturing before force-stopping anything is which of the two waits
+it is in: `debuggerd -j <pid>` for the coroutine workers, and whether the desktop's log shows a
+report arriving. A session that is asked a second time after a rejoin will prompt for deletion
+again, because §3.5 lets the phone remember nothing --- that is a known consequence and not a
+second defect.
