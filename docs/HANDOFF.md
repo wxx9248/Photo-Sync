@@ -54,9 +54,6 @@ up. Nothing here is blocked on me; all of it needs a machine, a phone, or a pers
 
 - [ ] **§7.4's parenthetical.** It justifies recovery by an inference the desktop does not
       make, and is safer for not making it. Reword the specification, or leave it. (§9)
-- [ ] **The SQLite virtual file system.** Outstanding since M2 with three ways forward written
-      out. Nothing since has needed it, and a crash inside SQLite's own writing is still not
-      modelled. (§5)
 - [ ] **The F-Droid signing keystore.** Make it, and back it up off the machine, before the
       first release. Losing it re-identifies every phone in the house. `packaging/fdroid/`
       says why at length. (§14)
