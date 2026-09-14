@@ -261,7 +261,11 @@ pub(crate) struct Session {
     pub phase: Phase,
     pub catalog: Catalog,
     pub summary: DiffSummary,
-    /// Files verified, skipped, and failed during this session, for its closing summary.
+    /// Files verified, skipped, and failed, for the summary §6.6 shows at the end.
+    ///
+    /// These survive a reconnection: §6 rejoins by running the session again with the same
+    /// frozen catalog, and what a person is shown at the end is one number for the whole
+    /// transfer rather than for its last leg.
     pub sent: u64,
     pub skipped: u64,
     pub failed: u64,

@@ -1913,3 +1913,104 @@ fn a_stranded_photograph_is_sent_again_once_its_row_is_dropped() {
         );
     }
 }
+
+/// What a person is told after a transfer that was rejoined. `SPEC.md` §6.6.
+///
+/// §6 makes reconnection the ordinary recovery path --- a dropped connection is rejoined by
+/// running the session again with the same frozen catalog --- and §6.6 shows one summary at the
+/// end of it. The count therefore has to describe the whole transfer rather than its last leg.
+///
+/// Found on a vivo: four hundred photographs crossed and committed over a connection that was
+/// superseded part-way, and the phone was told it had sent a hundred and eight. Nothing was
+/// lost and the index was right; only the number a person reads was wrong.
+#[test]
+fn a_transfer_that_was_rejoined_is_summed_up_whole() {
+    covers!("R-SESSION-008");
+    let second = b"a second photograph, of the dog".to_vec();
+    let other = DevicePath::new("DCIM/Camera/IMG_0002.jpg");
+
+    let mut sim = fresh();
+    sim.deliver(Event::Started {
+        now: Timestamp(MTIME),
+    });
+    sim.deliver(Event::PeerConnected {
+        device: phone(),
+        name: "Kitchen phone".to_string(),
+    });
+    sim.deliver(Event::CatalogSubmitted {
+        device: phone(),
+        entries: vec![
+            photo_entry(),
+            CatalogEntry {
+                path: other.clone(),
+                size: second.len() as u64,
+                mtime: Timestamp(MTIME),
+            },
+        ],
+        total_bytes: (PHOTO.len() + second.len()) as u64,
+    });
+    sim.deliver(Event::DiffRequested { device: phone() });
+    let (to_send, _) = diff_of(&sim.take_log());
+    assert_eq!(to_send.len(), 2);
+
+    // The first photograph crosses whole.
+    let first = to_send[0].file;
+    open_upload_of(&mut sim, first, 0, PHOTO.len() as u64);
+    send_bytes(&mut sim, first, 0, PHOTO);
+    close_upload(&mut sim, first, digest_of(PHOTO));
+    sim.take_log();
+
+    // Then the connection goes and the phone comes back, which §6 says is ordinary. The
+    // catalog is frozen, so it sends the same one and the desktop re-diffs.
+    sim.deliver(Event::PeerConnected {
+        device: phone(),
+        name: "Kitchen phone".to_string(),
+    });
+    sim.deliver(Event::CatalogSubmitted {
+        device: phone(),
+        entries: vec![
+            photo_entry(),
+            CatalogEntry {
+                path: other.clone(),
+                size: second.len() as u64,
+                mtime: Timestamp(MTIME),
+            },
+        ],
+        total_bytes: (PHOTO.len() + second.len()) as u64,
+    });
+    sim.deliver(Event::DiffRequested { device: phone() });
+    let (again, _) = diff_of(&sim.take_log());
+    assert_eq!(
+        again.len(),
+        1,
+        "the re-diff asked for more than what was left"
+    );
+
+    let last = again[0].file;
+    sim.deliver(Event::UploadOpened {
+        device: phone(),
+        file: last,
+        path: other.clone(),
+        size: second.len() as u64,
+        mtime: Timestamp(MTIME),
+        offset: 0,
+    });
+    send_bytes(&mut sim, last, 0, &second);
+    close_upload(&mut sim, last, digest_of(&second));
+    sim.take_log();
+
+    sim.deliver(Event::FinishRequested { device: phone() });
+    sim.take_log();
+    sim.deliver(Event::DeletionsReported {
+        device: phone(),
+        outcomes: Vec::new(),
+    });
+
+    let summary = session_summary(&sim.take_log());
+    assert_eq!(
+        summary.sent, 2,
+        "a rejoined transfer was summed up as {} photographs, not two",
+        summary.sent
+    );
+    assert_eq!(sim.storage.vault().len(), 2);
+}

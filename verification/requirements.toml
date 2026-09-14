@@ -503,6 +503,14 @@ status = "deferred"
 quote = "The phone persists nothing about transfer progress (only the pairing credential)"
 
 [[requirement]]
+id = "R-SESSION-008"
+section = "§6"
+area = "SESSION"
+status = "active"
+quote = "Both ends show a session summary: sent / skipped / failed / deleted / kept."
+note = "One summary for the whole transfer, not for its last connection: §6 rejoins as a matter of course, and a phone that crossed four hundred photographs over two connections was told it had sent a hundred and eight."
+
+[[requirement]]
 id = "R-SESSION-004"
 section = "§6"
 area = "SESSION"

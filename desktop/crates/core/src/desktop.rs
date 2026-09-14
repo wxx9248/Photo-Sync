@@ -397,15 +397,23 @@ impl Desktop {
         // A second live connection for one device supersedes the first. Whatever the previous
         // one was receiving is durable up to its watermark, so the only thing worth doing is
         // pushing that watermark as far as the bytes already in hand allow.
+        let mut session = Session::connected(device.clone());
         if let Some(previous) = self.sessions.remove(&device) {
             effects.extend(self.finalize_partials(&previous));
+            // The counts come across. §6 makes reconnection the ordinary recovery path and
+            // §6.6 shows one summary at the end of it, so a transfer that was rejoined has to
+            // report everything it moved rather than only what the last connection carried. A
+            // phone that sent four hundred photographs across a reconnect used to be told it
+            // had sent a hundred and eight.
+            session.sent = previous.sent;
+            session.skipped = previous.skipped;
+            session.failed = previous.failed;
             effects.push(info(format!(
                 "{name} ({device}) reconnected, superseding its session"
             )));
         }
 
-        self.sessions
-            .insert(device.clone(), Session::connected(device));
+        self.sessions.insert(device, session);
         effects
     }
 
