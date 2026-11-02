@@ -35,7 +35,7 @@ jobs:
       # `./verify full` builds the application module, runs its unit tests and runs Android
       # Lint over it, all of which need the SDK. The hosted image ships one, but naming the
       # packages here is what makes the build the same on a runner whose image changed.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
 
