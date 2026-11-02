@@ -27,7 +27,7 @@ jobs:
       # `./verify full` runs the phone's own tests, which are plain JVM tests. Both halves of
       # the project set `jvmToolchain(25)`, so this is the toolchain Gradle looks for; Gradle
       # itself comes from the wrapper in the repository.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
