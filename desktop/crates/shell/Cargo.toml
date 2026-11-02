@@ -12,7 +12,7 @@ photo-sync-protocol.workspace = true
 rcgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-toml = { version = "0.9", features = ["parse"] }
+toml = { version = "1.1", features = ["parse"] }
 rustls.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
