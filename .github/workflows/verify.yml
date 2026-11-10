@@ -41,7 +41,7 @@ jobs:
 
       # Gradle downloads the wrapper, the plugins and the dependencies on a cold runner, and
       # there are now three Android tasks rather than one JVM one.
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           build-root-directory: android
 
