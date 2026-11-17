@@ -24,7 +24,7 @@ refinery.workspace = true
 rusqlite.workspace = true
 rustix.workspace = true
 mdns-sd = "0.21"
-zbus = "5"
+zbus = "6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
