@@ -101,25 +101,30 @@ impl std::error::Error for SuspendError {}
 /// # Errors
 /// When there is no system bus, no login manager on it, or it declines.
 pub fn inhibit(why: &str) -> Result<Inhibition, SuspendError> {
-    let connection = zbus::blocking::Connection::system()
-        .map_err(|error| SuspendError::Unavailable(error.to_string()))?;
-    let answer = connection
-        .call_method(
-            Some("org.freedesktop.login1"),
-            "/org/freedesktop/login1",
-            Some("org.freedesktop.login1.Manager"),
-            "Inhibit",
-            // what, who, why, mode. Blocking rather than delaying: a transfer is not
-            // something to be hurried through in the seconds before a suspend.
-            &("sleep", "Photo Sync", why, "block"),
-        )
-        .map_err(classify)?;
+    // zbus 6 dropped its blocking API; `zbus::block_on` drives the async one on this thread.
+    zbus::block_on(async {
+        let connection = zbus::Connection::system()
+            .await
+            .map_err(|error| SuspendError::Unavailable(error.to_string()))?;
+        let answer = connection
+            .call_method(
+                Some("org.freedesktop.login1"),
+                "/org/freedesktop/login1",
+                Some("org.freedesktop.login1.Manager"),
+                "Inhibit",
+                // what, who, why, mode. Blocking rather than delaying: a transfer is not
+                // something to be hurried through in the seconds before a suspend.
+                &("sleep", "Photo Sync", why, "block"),
+            )
+            .await
+            .map_err(classify)?;
 
-    let held: zbus::zvariant::OwnedFd = answer
-        .body()
-        .deserialize()
-        .map_err(|error| SuspendError::Refused(error.to_string()))?;
-    Ok(Inhibition { _held: held.into() })
+        let held: zbus::OwnedFd = answer
+            .body()
+            .deserialize()
+            .map_err(|error| SuspendError::Refused(error.to_string()))?;
+        Ok(Inhibition { _held: held.into() })
+    })
 }
 
 /// Sorts what came back into the three things it can mean.
