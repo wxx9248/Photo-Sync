@@ -7,7 +7,11 @@ plugins {
 
 android {
     namespace = "top.wxx9248.photosync"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     // AGP's default build-tools version follows the plugin, not `compileSdk`, so it asks for
     // 36 unless it is told otherwise. Naming it here also means a machine builds with the
